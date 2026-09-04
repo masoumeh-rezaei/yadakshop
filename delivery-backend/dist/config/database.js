@@ -4,12 +4,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const promise_1 = __importDefault(require("mysql2/promise"));
+const env_js_1 = require("./env.js");
 const pool = promise_1.default.createPool({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT || 3306),
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    host: env_js_1.env.dbHost,
+    port: env_js_1.env.dbPort,
+    user: env_js_1.env.dbUser,
+    password: env_js_1.env.dbPassword,
+    database: env_js_1.env.dbName,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
