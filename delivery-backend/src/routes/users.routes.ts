@@ -8,11 +8,11 @@ import { asyncHandler } from '../utils/async-handler.js';
 interface UserRow extends RowDataPacket {
   id: number;
   phone: string;
-  full_name: string | null;
+  fullName: string | null;
   role: 'ADMIN' | 'DRIVER';
-  is_active: number;
-  created_at: Date;
-  updated_at: Date;
+  isActive: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const router = Router();
@@ -20,7 +20,8 @@ router.use(authenticate, authorize('ADMIN'));
 
 router.get('/', asyncHandler(async (_req, res) => {
   const [rows] = await pool.query<UserRow[]>(
-    `SELECT id, phone, full_name, role, is_active, created_at, updated_at
+    `SELECT id, phone, full_name AS fullName, role, is_active AS isActive,
+            created_at AS createdAt, updated_at AS updatedAt
      FROM users ORDER BY created_at DESC`,
   );
   res.json({ success: true, data: rows });

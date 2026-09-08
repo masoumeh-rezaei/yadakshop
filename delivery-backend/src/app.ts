@@ -5,10 +5,11 @@ import pool from './config/database.js';
 import authRoutes from './routes/auth.routes.js';
 import locationRoutes from './routes/locations.routes.js';
 import userRoutes from './routes/users.routes.js';
+import { env } from './config/env.js';
 
 const app = express();
 app.disable('x-powered-by');
-app.use(cors());
+app.use(cors({ origin: env.corsOrigins }));
 app.use(express.json({ limit: '100kb' }));
 app.get('/api/health', async (_req, res) => {
   try {

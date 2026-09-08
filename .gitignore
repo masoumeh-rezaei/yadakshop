@@ -1,0 +1,9 @@
+.idea/
+.vscode/
+.claude/
+**/node_modules/
+**/.env
+**/.env.local
+**/.env.*.local
+*.log
+*.tsbuildinfo

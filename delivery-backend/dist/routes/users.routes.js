@@ -11,7 +11,8 @@ const async_handler_js_1 = require("../utils/async-handler.js");
 const router = (0, express_1.Router)();
 router.use(auth_js_1.authenticate, (0, auth_js_1.authorize)('ADMIN'));
 router.get('/', (0, async_handler_js_1.asyncHandler)(async (_req, res) => {
-    const [rows] = await database_js_1.default.query(`SELECT id, phone, full_name, role, is_active, created_at, updated_at
+    const [rows] = await database_js_1.default.query(`SELECT id, phone, full_name AS fullName, role, is_active AS isActive,
+            created_at AS createdAt, updated_at AS updatedAt
      FROM users ORDER BY created_at DESC`);
     res.json({ success: true, data: rows });
 }));

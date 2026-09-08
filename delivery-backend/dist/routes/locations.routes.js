@@ -7,6 +7,7 @@ const express_1 = require("express");
 const database_js_1 = __importDefault(require("../config/database.js"));
 const auth_js_1 = require("../middleware/auth.js");
 const async_handler_js_1 = require("../utils/async-handler.js");
+const realtime_js_1 = require("../realtime.js");
 const router = (0, express_1.Router)();
 router.post('/', auth_js_1.authenticate, (0, auth_js_1.authorize)('DRIVER'), (0, async_handler_js_1.asyncHandler)(async (req, res) => {
     const latitude = Number(req.body.latitude);
@@ -21,10 +22,22 @@ router.post('/', auth_js_1.authenticate, (0, auth_js_1.authorize)('DRIVER'), (0,
         return;
     }
     const [result] = await database_js_1.default.execute('INSERT INTO locations (user_id, latitude, longitude, accuracy, recorded_at) VALUES (?, ?, ?, ?, ?)', [req.user.id, latitude, longitude, accuracy, recordedAt]);
-    res.status(201).json({ success: true, data: { id: result.insertId, recordedAt } });
+    const location = {
+        id: Number(result.insertId),
+        userId: req.user.id,
+        phone: req.user.phone,
+        fullName: req.user.fullName,
+        latitude,
+        longitude,
+        accuracy,
+        recordedAt: recordedAt.toISOString(),
+    };
+    (0, realtime_js_1.emitLocationUpdate)(location);
+    res.status(201).json({ success: true, data: location });
 }));
 router.get('/latest', auth_js_1.authenticate, (0, auth_js_1.authorize)('ADMIN'), (0, async_handler_js_1.asyncHandler)(async (_req, res) => {
-    const [rows] = await database_js_1.default.query(`SELECT l.id, l.user_id, u.phone, u.full_name, l.latitude, l.longitude, l.accuracy, l.recorded_at
+    const [rows] = await database_js_1.default.query(`SELECT l.id, l.user_id AS userId, u.phone, u.full_name AS fullName,
+            l.latitude, l.longitude, l.accuracy, l.recorded_at AS recordedAt
      FROM locations l INNER JOIN users u ON u.id = l.user_id
      INNER JOIN (SELECT user_id, MAX(id) AS latest_id FROM locations GROUP BY user_id) latest ON latest.latest_id = l.id
      WHERE u.role = 'DRIVER' AND u.is_active = 1 ORDER BY l.recorded_at DESC`);
@@ -37,7 +50,8 @@ router.get('/:userId/history', auth_js_1.authenticate, (0, auth_js_1.authorize)(
         res.status(400).json({ success: false, message: 'شناسه پیک معتبر نیست' });
         return;
     }
-    const [rows] = await database_js_1.default.execute(`SELECT l.id, l.user_id, u.phone, u.full_name, l.latitude, l.longitude, l.accuracy, l.recorded_at
+    const [rows] = await database_js_1.default.execute(`SELECT l.id, l.user_id AS userId, u.phone, u.full_name AS fullName,
+            l.latitude, l.longitude, l.accuracy, l.recorded_at AS recordedAt
      FROM locations l INNER JOIN users u ON u.id = l.user_id
      WHERE l.user_id = ? AND u.role = 'DRIVER' ORDER BY l.recorded_at DESC LIMIT ${limit}`, [userId]);
     res.json({ success: true, data: rows });

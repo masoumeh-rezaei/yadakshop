@@ -17,6 +17,10 @@ exports.env = {
     dbName: required('DB_NAME'),
     jwtSecret: required('JWT_SECRET'),
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
 };
 if (exports.env.jwtSecret.length < 32)
     throw new Error('JWT_SECRET must be at least 32 characters long');
