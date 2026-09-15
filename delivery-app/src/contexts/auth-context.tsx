@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    // در شروع برنامه، توکن ذخیره‌شده با سرور اعتبارسنجی می‌شود؛ وجود محلی آن به‌تنهایی کافی نیست.
     tokenStorage.get()
       .then(async (storedToken) => {
         if (!storedToken) return;

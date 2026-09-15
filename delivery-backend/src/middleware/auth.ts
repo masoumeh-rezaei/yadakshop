@@ -23,6 +23,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
   try {
     const payload = jwt.verify(token, env.jwtSecret) as TokenPayload;
+
+    // فقط امضای توکن کافی نیست؛ وضعیت فعلی کاربر نیز از دیتابیس بررسی می‌شود.
+    // در نتیجه، غیرفعال‌کردن حساب بلافاصله دسترسی توکن قبلی را هم قطع می‌کند.
     const [rows] = await pool.execute<UserRow[]>(
       'SELECT id, phone, full_name, role, is_active FROM users WHERE id = ? LIMIT 1',
       [payload.sub],
@@ -43,6 +46,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
 export const authorize = (...roles: UserRole[]) =>
   (req: Request, res: Response, next: NextFunction) => {
+    // authenticate کاربر را شناسایی می‌کند و authorize مجوز نقش او را می‌سنجد.
     if (!req.user || !roles.includes(req.user.role)) {
       res.status(403).json({ success: false, message: 'اجازه انجام این عملیات را ندارید' });
       return;

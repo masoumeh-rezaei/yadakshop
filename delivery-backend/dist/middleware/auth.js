@@ -16,6 +16,8 @@ const authenticate = async (req, res, next) => {
     }
     try {
         const payload = jsonwebtoken_1.default.verify(token, env_js_1.env.jwtSecret);
+        // فقط امضای توکن کافی نیست؛ وضعیت فعلی کاربر نیز از دیتابیس بررسی می‌شود.
+        // در نتیجه، غیرفعال‌کردن حساب بلافاصله دسترسی توکن قبلی را هم قطع می‌کند.
         const [rows] = await database_js_1.default.execute('SELECT id, phone, full_name, role, is_active FROM users WHERE id = ? LIMIT 1', [payload.sub]);
         const user = rows[0];
         if (!user || !user.is_active) {
@@ -33,6 +35,7 @@ const authenticate = async (req, res, next) => {
 };
 exports.authenticate = authenticate;
 const authorize = (...roles) => (req, res, next) => {
+    // authenticate کاربر را شناسایی می‌کند و authorize مجوز نقش او را می‌سنجد.
     if (!req.user || !roles.includes(req.user.role)) {
         res.status(403).json({ success: false, message: 'اجازه انجام این عملیات را ندارید' });
         return;

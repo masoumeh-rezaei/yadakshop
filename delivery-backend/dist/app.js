@@ -12,6 +12,7 @@ const users_routes_js_1 = __importDefault(require("./routes/users.routes.js"));
 const env_js_1 = require("./config/env.js");
 const app = (0, express_1.default)();
 app.disable('x-powered-by');
+// Middlewareهای عمومی قبل از routeها اجرا می‌شوند تا ورودی تمام APIها یک‌دست باشد.
 app.use((0, cors_1.default)({ origin: env_js_1.env.corsOrigins }));
 app.use(express_1.default.json({ limit: '100kb' }));
 app.get('/api/health', async (_req, res) => {
@@ -27,6 +28,7 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/auth', auth_routes_js_1.default);
 app.use('/api/users', users_routes_js_1.default);
 app.use('/api/locations', locations_routes_js_1.default);
+// این دو middleware باید آخر باشند: اول مسیر ناموجود و سپس خطاهای کنترل‌نشده.
 app.use((_req, res) => res.status(404).json({ success: false, message: 'مسیر API پیدا نشد' }));
 app.use((error, _req, res, _next) => {
     console.error(error);

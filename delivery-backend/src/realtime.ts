@@ -32,6 +32,7 @@ export const initializeRealtime = (httpServer: HttpServer) => {
 
   io.use(async (socket, next) => {
     try {
+      // اتصال WebSocket هم مانند REST مستقل احراز هویت می‌شود و فقط مدیر اجازه اتصال دارد.
       const rawToken = socket.handshake.auth?.token;
       if (typeof rawToken !== 'string' || !rawToken) return next(new Error('unauthorized'));
       const payload = jwt.verify(rawToken, env.jwtSecret) as TokenPayload;
@@ -53,5 +54,6 @@ export const initializeRealtime = (httpServer: HttpServer) => {
 };
 
 export const emitLocationUpdate = (location: RealtimeLocation) => {
+  // room باعث می‌شود اطلاعات مکانی فقط برای پنل‌های مدیر broadcast شود.
   io?.to('admins').emit('location:update', location);
 };

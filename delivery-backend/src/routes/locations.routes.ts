@@ -38,11 +38,13 @@ router.post('/', authenticate, authorize('DRIVER'), asyncHandler(async (req, res
     accuracy,
     recordedAt: recordedAt.toISOString(),
   };
+  // پس از ثبت قطعی در دیتابیس، همان رکورد برای پنل‌های مدیر متصل ارسال می‌شود.
   emitLocationUpdate(location);
   res.status(201).json({ success: true, data: location });
 }));
 
 router.get('/latest', authenticate, authorize('ADMIN'), asyncHandler(async (_req, res) => {
+  // زیرپرس‌وجو آخرین id هر پیک را پیدا می‌کند تا نقشه فقط یک marker برای هر نفر داشته باشد.
   const [rows] = await pool.query<LocationRow[]>(
     `SELECT l.id, l.user_id AS userId, u.phone, u.full_name AS fullName,
             l.latitude, l.longitude, l.accuracy, l.recorded_at AS recordedAt

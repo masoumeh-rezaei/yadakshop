@@ -63,6 +63,7 @@ export function Dashboard() {
 
   useEffect(() => {
     if (!token) return;
+    // داده اولیه با REST دریافت می‌شود؛ از این نقطه به بعد Socket.IO تغییرات را زنده اعمال می‌کند.
     const socket = io(API_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
@@ -72,6 +73,7 @@ export function Dashboard() {
     socket.on('disconnect', () => setConnection('disconnected'));
     socket.on('connect_error', () => setConnection('disconnected'));
     socket.on('location:update', (location: DriverLocation) => {
+      // موقعیت جدید جای رکورد قبلی همان پیک را می‌گیرد تا state و نقشه تکراری نشوند.
       setLocations((current) => [location, ...current.filter((item) => item.userId !== location.userId)]);
     });
     const connectTimer = window.setTimeout(() => socket.connect(), 0);
@@ -83,6 +85,7 @@ export function Dashboard() {
   }, [token]);
 
   useEffect(() => {
+    // polling نقش پشتیبان را دارد تا بعد از قطعی موقت سوکت، پنل دوباره همگام شود.
     const timer = window.setInterval(() => loadData(true), 30_000);
     return () => window.clearInterval(timer);
   }, [loadData]);

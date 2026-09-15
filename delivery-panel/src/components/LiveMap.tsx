@@ -18,6 +18,7 @@ function FitLocations({ locations }: { locations: DriverLocation[] }) {
   const key = locations.map((item) => `${item.userId}:${item.latitude}:${item.longitude}`).join('|');
   useEffect(() => {
     if (!locations.length) return;
+    // محدوده نقشه با جابه‌جایی پیک‌ها تنظیم می‌شود؛ برای یک پیک zoom ثابت خواناتر است.
     const bounds = L.latLngBounds(locations.map((item) => [Number(item.latitude), Number(item.longitude)]));
     if (locations.length === 1) map.setView(bounds.getCenter(), 15);
     else map.fitBounds(bounds, { padding: [55, 55], maxZoom: 15 });

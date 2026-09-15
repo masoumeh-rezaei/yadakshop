@@ -32,10 +32,12 @@ router.post('/', auth_js_1.authenticate, (0, auth_js_1.authorize)('DRIVER'), (0,
         accuracy,
         recordedAt: recordedAt.toISOString(),
     };
+    // پس از ثبت قطعی در دیتابیس، همان رکورد برای پنل‌های مدیر متصل ارسال می‌شود.
     (0, realtime_js_1.emitLocationUpdate)(location);
     res.status(201).json({ success: true, data: location });
 }));
 router.get('/latest', auth_js_1.authenticate, (0, auth_js_1.authorize)('ADMIN'), (0, async_handler_js_1.asyncHandler)(async (_req, res) => {
+    // زیرپرس‌وجو آخرین id هر پیک را پیدا می‌کند تا نقشه فقط یک marker برای هر نفر داشته باشد.
     const [rows] = await database_js_1.default.query(`SELECT l.id, l.user_id AS userId, u.phone, u.full_name AS fullName,
             l.latitude, l.longitude, l.accuracy, l.recorded_at AS recordedAt
      FROM locations l INNER JOIN users u ON u.id = l.user_id
