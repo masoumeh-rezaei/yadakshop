@@ -9,6 +9,7 @@ const database_js_1 = __importDefault(require("./config/database.js"));
 const auth_routes_js_1 = __importDefault(require("./routes/auth.routes.js"));
 const locations_routes_js_1 = __importDefault(require("./routes/locations.routes.js"));
 const users_routes_js_1 = __importDefault(require("./routes/users.routes.js"));
+const places_routes_js_1 = __importDefault(require("./routes/places.routes.js"));
 const env_js_1 = require("./config/env.js");
 const app = (0, express_1.default)();
 app.disable('x-powered-by');
@@ -28,6 +29,7 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/auth', auth_routes_js_1.default);
 app.use('/api/users', users_routes_js_1.default);
 app.use('/api/locations', locations_routes_js_1.default);
+app.use('/api/places', places_routes_js_1.default);
 // این دو middleware باید آخر باشند: اول مسیر ناموجود و سپس خطاهای کنترل‌نشده.
 app.use((_req, res) => res.status(404).json({ success: false, message: 'مسیر API پیدا نشد' }));
 app.use((error, _req, res, _next) => {

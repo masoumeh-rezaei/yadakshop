@@ -21,6 +21,15 @@ export interface DriverLocation {
   recordedAt: string;
 }
 
+export interface SavedPlace {
+  id: number;
+  name: string;
+  latitude: number | string;
+  longitude: number | string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface LoginResult {
   token: string;
   user: User;

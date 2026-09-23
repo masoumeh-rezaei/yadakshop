@@ -1,4 +1,4 @@
-import type { DriverLocation, LoginResult, User, UserRole } from './types';
+import type { DriverLocation, LoginResult, SavedPlace, User, UserRole } from './types';
 
 export const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -29,6 +29,13 @@ export const api = {
   me: (token: string) => request<User>('/api/auth/me', {}, token),
   users: (token: string) => request<User[]>('/api/users', {}, token),
   latestLocations: (token: string) => request<DriverLocation[]>('/api/locations/latest', {}, token),
+  places: (token: string) => request<SavedPlace[]>('/api/places', {}, token),
+  createPlace: (token: string, input: { name: string; latitude: number; longitude: number }) =>
+    request<SavedPlace>('/api/places', { method: 'POST', body: JSON.stringify(input) }, token),
+  updatePlace: (token: string, id: number, input: { name: string; latitude: number; longitude: number }) =>
+    request<SavedPlace>(`/api/places/${id}`, { method: 'PUT', body: JSON.stringify(input) }, token),
+  deletePlace: (token: string, id: number) =>
+    request<void>(`/api/places/${id}`, { method: 'DELETE' }, token),
   createUser: (token: string, input: { phone: string; password: string; fullName: string; role: UserRole }) =>
     request<User>('/api/users', { method: 'POST', body: JSON.stringify(input) }, token),
   setUserStatus: (token: string, id: number, isActive: boolean) =>

@@ -82,7 +82,41 @@ input:focus, select:focus { border-color: #138c81; box-shadow: 0 0 0 3px rgba(19
   .dashboard-main { margin-right: 0; padding: 75px 18px 28px; }.mobile-menu { position: fixed; z-index: 30; top: 18px; right: 18px; width: 42px; height: 42px; display: grid; place-items: center; color: #fff; background: #111c32; border: 0; border-radius: 11px; box-shadow: 0 5px 14px rgba(15,23,42,.18); }
   .map-card { height: auto; min-height: 0; grid-template-columns: 1fr; }.map-panel { height: 520px; }.driver-panel { height: 420px; border-top: 1px solid #e7eaf0; border-left: 0; }
 }
+
+/* Saved places */
+.map-legend i.place-dot { background: #6d4bc3; }
+.place-marker-wrapper { background: transparent; border: 0; }
+.place-marker { width: 34px; height: 40px; position: relative; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50% 50% 50% 8px; background: #6d4bc3; box-shadow: 0 5px 13px rgba(41,28,83,.35); transform: rotate(-45deg); }
+.place-marker span { width: 10px; height: 10px; border: 3px solid rgba(255,255,255,.9); border-radius: 50%; }
+.place-marker.selected { background: #ef7a32; box-shadow: 0 0 0 6px rgba(239,122,50,.2), 0 5px 14px rgba(15,23,42,.35); }
+.place-marker.draft { background: #168a7a; animation: marker-pulse 1.2s ease-in-out infinite; }
+@keyframes marker-pulse { 50% { box-shadow: 0 0 0 10px rgba(22,138,122,.2), 0 5px 13px rgba(41,28,83,.3); } }
+.places-card { height: calc(100vh - 123px); }
+.places-card.placing .leaflet-container { cursor: crosshair; }
+.placement-hint { position: absolute; z-index: 500; top: 17px; left: 50%; display: flex; align-items: center; gap: 8px; padding: 11px 15px; color: #fff; background: rgba(17,28,50,.92); border-radius: 10px; box-shadow: 0 7px 22px rgba(15,23,42,.24); font-size: 11px; transform: translateX(-50%); pointer-events: none; }
+.add-place-button { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 16px 12px; color: #0f766e; background: #eaf8f5; border: 1px dashed #79cabb; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.add-place-button:hover, .add-place-button.active { color: #fff; background: #0f766e; border-color: #0f766e; }
+.place-list { padding: 0 9px 8px; }
+.place-item { display: flex; align-items: center; gap: 4px; padding: 5px; border: 1px solid transparent; border-radius: 10px; }
+.place-item:hover { background: #f8fafc; }
+.place-item.selected { background: #f1edfb; border-color: #ddd2f5; }
+.place-item-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; padding: 5px; background: transparent; border: 0; text-align: right; }
+.place-avatar { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; color: #6544ba; background: #eee9fa; border-radius: 10px; }
+.place-actions { display: flex; gap: 1px; }
+.place-actions button { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; color: #667085; background: transparent; border: 0; border-radius: 7px; }
+.place-actions button:hover { color: #0f766e; background: #eaf8f5; }
+.place-actions button.danger:hover { color: #b42318; background: #fff0ef; }
+.coordinate-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.coordinate-fields input { text-align: left; }
+@media (max-width: 640px) {
+  .coordinate-fields { grid-template-columns: 1fr; gap: 0; }
+  .placement-hint { width: max-content; max-width: calc(100% - 32px); }
+}
 @media (max-width: 640px) {
   .login-form-side { padding: 26px; }.stats-grid { grid-template-columns: 1fr; }.topbar { align-items: flex-start; gap: 13px; }.topbar h1 { font-size: 20px; }.connection-badge { padding: 8px; }.connection-badge svg { display: none; }
   .map-panel { height: 440px; }.users-card { padding: 17px; }.users-toolbar { align-items: flex-start; flex-direction: column; }.users-toolbar .primary-button { width: 100%; }.table-search { width: 100%; }
+}
+
+@media (max-width: 980px) {
+  .places-card { height: auto; }
 }
