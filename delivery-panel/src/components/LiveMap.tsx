@@ -11,16 +11,31 @@ const markerIcon = (online: boolean, selected: boolean) => L.divIcon({
   iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -17],
 });
 
-const placeIcon = (selected: boolean) => L.divIcon({
-  className: 'place-marker-wrapper',
-  html: `<div class="place-marker ${selected ? 'selected' : ''}"><span></span></div>`,
-  iconSize: [34, 40], iconAnchor: [17, 40], popupAnchor: [0, -38],
-});
+const placeColors = ['#7c3aed', '#db2777', '#2563eb', '#0891b2', '#059669', '#ca8a04', '#ea580c', '#dc2626', '#4f46e5'];
+
+const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
+}[character] ?? character));
+
+const placeIcon = (place: SavedPlace, selected: boolean) => {
+  const color = placeColors[Math.abs(Number(place.id)) % placeColors.length];
+  const name = escapeHtml(place.name);
+  const initial = escapeHtml(Array.from(place.name.trim())[0] || 'م');
+  return L.divIcon({
+    className: 'place-marker-wrapper',
+    html: `<div class="place-marker-card ${selected ? 'selected' : ''}" style="--place-color:${color}">
+      <div class="place-marker-label"><span>${name}</span></div>
+      <div class="place-marker-pin"><span>${initial}</span></div>
+      <div class="place-marker-shadow"></div>
+    </div>`,
+    iconSize: [140, 62], iconAnchor: [70, 58], popupAnchor: [0, -56],
+  });
+};
 
 const draftIcon = L.divIcon({
   className: 'place-marker-wrapper',
-  html: '<div class="place-marker draft"><span></span></div>',
-  iconSize: [34, 40], iconAnchor: [17, 40], popupAnchor: [0, -38],
+  html: '<div class="place-marker-card draft"><div class="place-marker-label"><span>مکان جدید</span></div><div class="place-marker-pin"><span>+</span></div><div class="place-marker-shadow"></div></div>',
+  iconSize: [140, 62], iconAnchor: [70, 58], popupAnchor: [0, -56],
 });
 
 const isOnline = (date: string) => Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
@@ -80,7 +95,7 @@ export function LiveMap({ locations, selectedId, onSelect, places = [], selected
       ))}
       {places.map((place) => (
         <Marker key={`place-${place.id}`} position={[Number(place.latitude), Number(place.longitude)]}
-          icon={placeIcon(selectedPlaceId === place.id)}
+          icon={placeIcon(place, selectedPlaceId === place.id)}
           eventHandlers={{ click: () => onPlaceSelect?.(place.id) }}>
           <Popup><strong>{place.name}</strong><br /><small dir="ltr">
             {Number(place.latitude).toFixed(6)}, {Number(place.longitude).toFixed(6)}

@@ -86,11 +86,21 @@ input:focus, select:focus { border-color: #138c81; box-shadow: 0 0 0 3px rgba(19
 /* Saved places */
 .map-legend i.place-dot { background: #6d4bc3; }
 .place-marker-wrapper { background: transparent; border: 0; }
-.place-marker { width: 34px; height: 40px; position: relative; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50% 50% 50% 8px; background: #6d4bc3; box-shadow: 0 5px 13px rgba(41,28,83,.35); transform: rotate(-45deg); }
-.place-marker span { width: 10px; height: 10px; border: 3px solid rgba(255,255,255,.9); border-radius: 50%; }
-.place-marker.selected { background: #ef7a32; box-shadow: 0 0 0 6px rgba(239,122,50,.2), 0 5px 14px rgba(15,23,42,.35); }
-.place-marker.draft { background: #168a7a; animation: marker-pulse 1.2s ease-in-out infinite; }
-@keyframes marker-pulse { 50% { box-shadow: 0 0 0 10px rgba(22,138,122,.2), 0 5px 13px rgba(41,28,83,.3); } }
+.place-marker-card { --place-color: #6d4bc3; width: 140px; height: 62px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; filter: drop-shadow(0 5px 7px rgba(15,23,42,.2)); transform-origin: 50% 100%; transition: transform .18s ease, filter .18s ease; }
+.place-marker-label { max-width: 132px; height: 25px; position: absolute; top: 0; display: flex; align-items: center; padding: 0 10px; color: #253047; background: rgba(255,255,255,.96); border: 1px solid color-mix(in srgb, var(--place-color) 28%, #e3e7ee); border-radius: 8px; box-shadow: 0 3px 9px rgba(15,23,42,.1); font: 700 10px/1 Tahoma, Arial, sans-serif; white-space: nowrap; }
+.place-marker-label > span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.place-marker-label::after { width: 7px; height: 7px; position: absolute; right: 7px; bottom: -5px; content: ''; background: #fff; border-right: 1px solid color-mix(in srgb, var(--place-color) 28%, #e3e7ee); border-bottom: 1px solid color-mix(in srgb, var(--place-color) 28%, #e3e7ee); transform: rotate(45deg); }
+.place-marker-pin { width: 32px; height: 32px; position: absolute; bottom: 7px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--place-color) 78%, #fff), var(--place-color)); border: 3px solid #fff; border-radius: 50% 50% 50% 8px; box-shadow: 0 4px 10px color-mix(in srgb, var(--place-color) 40%, transparent); transform: rotate(-45deg); }
+.place-marker-pin span { font: 800 12px/1 Tahoma, Arial, sans-serif; transform: rotate(45deg); }
+.place-marker-shadow { width: 18px; height: 5px; position: absolute; bottom: 0; background: rgba(15,23,42,.2); border-radius: 50%; filter: blur(2px); }
+.place-marker-card:hover, .place-marker-card.selected { z-index: 2; filter: drop-shadow(0 8px 10px rgba(15,23,42,.28)); transform: translateY(-3px) scale(1.07); }
+.place-marker-card.selected .place-marker-label { color: #fff; background: var(--place-color); border-color: var(--place-color); }
+.place-marker-card.selected .place-marker-label::after { background: var(--place-color); border-color: var(--place-color); }
+.place-marker-card.selected .place-marker-pin { box-shadow: 0 0 0 5px color-mix(in srgb, var(--place-color) 20%, transparent), 0 5px 12px rgba(15,23,42,.26); }
+.place-marker-card.draft { --place-color: #0f766e; animation: marker-pulse 1.2s ease-in-out infinite; }
+.place-marker-card.draft .place-marker-label { color: #0f766e; border-style: dashed; }
+.place-marker-card.draft .place-marker-pin span { font-size: 20px; font-weight: 400; }
+@keyframes marker-pulse { 50% { transform: translateY(-4px) scale(1.06); filter: drop-shadow(0 9px 12px rgba(15,118,110,.28)); } }
 .places-card { height: calc(100vh - 123px); }
 .places-card.placing .leaflet-container { cursor: crosshair; }
 .placement-hint { position: absolute; z-index: 500; top: 17px; left: 50%; display: flex; align-items: center; gap: 8px; padding: 11px 15px; color: #fff; background: rgba(17,28,50,.92); border-radius: 10px; box-shadow: 0 7px 22px rgba(15,23,42,.24); font-size: 11px; transform: translateX(-50%); pointer-events: none; }
