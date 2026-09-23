@@ -33,6 +33,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/with-app-exit-info",
       "expo-router",
       [
         "expo-location",

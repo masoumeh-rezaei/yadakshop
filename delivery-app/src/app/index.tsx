@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { API_URL } from '@/services/api';
 import {
   isBackgroundTrackingActive,
+  reconcileUserRequestedStop,
   startBackgroundTracking,
   stopBackgroundTracking,
 } from '@/tasks/background-location';
@@ -37,13 +38,20 @@ export default function HomeScreen() {
     if (user?.role !== 'DRIVER') return;
     let mounted = true;
     Promise.all([
-      isBackgroundTrackingActive(),
+      reconcileUserRequestedStop().then(async (wasStoppedByUser) => ({
+        active: await isBackgroundTrackingActive(),
+        wasStoppedByUser,
+      })),
       Location.getLastKnownPositionAsync(),
-    ]).then(([active, location]) => {
+    ]).then(([trackingState, location]) => {
       if (!mounted) return;
-      setIsTracking(active);
+      setIsTracking(trackingState.active);
       setLastLocation(location);
-      if (active) setLocationStatus('ارسال موقعیت در پس‌زمینه فعال است.');
+      if (trackingState.wasStoppedByUser) {
+        setLocationStatus('ارسال موقعیت با توقف برنامه از پنل گوشی متوقف شده است.');
+      } else if (trackingState.active) {
+        setLocationStatus('ارسال موقعیت در پس‌زمینه فعال است.');
+      }
     }).catch(() => undefined);
     return () => { mounted = false; };
   }, [user?.id, user?.role]);

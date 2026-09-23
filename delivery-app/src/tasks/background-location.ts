@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { NativeModules, Platform } from 'react-native';
 import { ApiError, sendLocation } from '@/services/api';
 import { tokenStorage } from '@/services/token-storage';
 
@@ -42,6 +43,28 @@ if (!TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {
 
 export const isBackgroundTrackingActive = () =>
   Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+
+interface AppExitInfoNativeModule {
+  consumeUserRequestedStop(): Promise<boolean>;
+}
+
+const appExitInfo = NativeModules.AppExitInfo as AppExitInfoNativeModule | undefined;
+
+/**
+ * Android does not invoke an app callback when the user presses Stop in the
+ * system's Active apps panel. The OS kills the process, but Expo's persisted
+ * TaskManager registration can remain. On the next launch, consume that exit
+ * reason once and unregister the stale location task.
+ */
+export const reconcileUserRequestedStop = async () => {
+  if (Platform.OS !== 'android' || !appExitInfo) return false;
+
+  const wasStoppedByUser = await appExitInfo.consumeUserRequestedStop();
+  if (wasStoppedByUser) {
+    await stopBackgroundTracking();
+  }
+  return wasStoppedByUser;
+};
 
 export const startBackgroundTracking = () =>
   Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
