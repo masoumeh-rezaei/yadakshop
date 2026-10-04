@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 import pwd
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -32,12 +33,28 @@ GIT = '/usr/local/cpanel/3rdparty/lib/path-bin/git'
 API_SERVICE = 'peik-delivery-api.service'
 SHA_PATTERN = re.compile(r'^[0-9a-f]{40}$')
 JOURNAL = False
+INTERRUPT_SIGNALS = (signal.SIGTERM, signal.SIGHUP)
+
+class DeploymentInterrupted(Exception):
+    pass
+
+def silence_stdout():
+    try:
+        descriptor = os.open(os.devnull, os.O_WRONLY)
+        try: os.dup2(descriptor, sys.stdout.fileno())
+        finally: os.close(descriptor)
+    except (OSError, AttributeError, ValueError):
+        pass
 
 def now():
     return datetime.now(timezone.utc).isoformat()
 
 def log(message):
-    print(now() + ' ' + message, flush=True)
+    try:
+        print(now() + ' ' + message, flush=True)
+    except BrokenPipeError:
+        # The coordinator must keep recovering even if the SSH caller disconnects.
+        silence_stdout()
     if JOURNAL:
         subprocess.run(['/usr/bin/logger', '-t', 'peik-deploy', '--', message], check=False)
 
@@ -100,7 +117,7 @@ def unpack_artifact(fileobj, destination):
             if not member.isdir() and not member.isfile():
                 raise ValueError('Links and special files are not permitted')
             total += member.size
-            if member.size > 32 * 1024 * 1024 or total > 256 * 1024 * 1024:
+            if member.size < 0 or member.size > 32 * 1024 * 1024 or total > 256 * 1024 * 1024:
                 raise ValueError('Artifact too large')
             target = destination.joinpath(*path.parts)
             if member.isdir():
@@ -166,8 +183,9 @@ def set_current(path):
         if temporary.is_symlink(): temporary.unlink()
 
 def publish(path):
-    run(['/usr/sbin/runuser', '-u', 'peikydsp', '--', '/usr/bin/python3',
-         str(HELPERS / 'publish.py'), str(path)], timeout=90)
+    output = run(['/usr/sbin/runuser', '-u', 'peikydsp', '--', '/usr/bin/python3',
+         str(HELPERS / 'publish.py'), str(path)], timeout=90, capture=True)
+    log(output)
 
 def runtime_check(path, candidate=False):
     mode = 'candidate' if candidate else 'production'
@@ -215,18 +233,26 @@ def candidate_check(path):
         subprocess.run(['systemctl', 'stop', unit], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def restore(transaction):
-    old = release_path(transaction['old_release'])
-    set_current(old)
-    publish(old)
-    run(['systemctl', 'restart', API_SERVICE], timeout=100)
-    wait_check(old)
-    atomic_json(STATE, transaction['old_state'])
-    PENDING.unlink(missing_ok=True)
-    log('ROLLBACK_OK ' + old.name)
+    handlers = {sig: signal.signal(sig, signal.SIG_IGN) for sig in INTERRUPT_SIGNALS}
+    try:
+        old = release_path(transaction['old_release'])
+        set_current(old)
+        publish(old)
+        run(['systemctl', 'restart', API_SERVICE], timeout=100)
+        wait_check(old)
+        atomic_json(STATE, transaction['old_state'])
+        PENDING.unlink(missing_ok=True)
+        log('ROLLBACK_OK ' + old.name)
+    finally:
+        for sig, handler in handlers.items(): signal.signal(sig, handler)
+
+def interrupted(sig, frame):
+    raise DeploymentInterrupted('Deployment interrupted by signal ' + str(sig))
 
 def activate(path, state, hold_main=False):
     transaction = {'old_release': state['current_release'], 'new_release': path.name, 'old_state': state.copy()}
     atomic_json(PENDING, transaction)
+    committed = False
     try:
         set_current(path)
         publish(path)
@@ -238,11 +264,13 @@ def activate(path, state, hold_main=False):
                      last_success=now(), last_error=None, failed_sha=None, failed_at=None,
                      held_sha=transaction['old_state']['current_sha'] if hold_main else None)
         atomic_json(STATE, state)
+        committed = True
         PENDING.unlink(missing_ok=True)
         log('DEPLOY_OK ' + metadata['sha'])
     except BaseException:
-        log('ACTIVATION_FAILED restoring previous release')
-        restore(transaction)
+        if not committed:
+            log('ACTIVATION_FAILED restoring previous release')
+            restore(transaction)
         raise
 
 def receive(sha):
@@ -285,6 +313,7 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0: raise SystemExit('Run as root')
     JOURNAL = True
+    for sig in INTERRUPT_SIGNALS: signal.signal(sig, interrupted)
     STATE_DIR.mkdir(mode=0o700, exist_ok=True)
     with (STATE_DIR / 'deploy.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

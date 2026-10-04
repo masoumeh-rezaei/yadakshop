@@ -39,6 +39,10 @@ checks cover public HTTPS/API/Socket.IO, the actual process working directory,
 and the published HTML. Failure restores the previous code and panel. An
 interrupted activation is recovered from a root-owned transaction journal on
 the next deployment or status command.
+SSH output failure cannot interrupt recovery. Hangup/termination signals enter
+the rollback path, and recovery shields itself from repeated termination signals.
+A hard process kill or host failure still requires the saved journal to be
+recovered by the next deployment/status invocation.
 
 Deployment is serialized by GitHub concurrency and a server lock. An obsolete
 commit is rejected if `main` has moved. A single backend restart disconnects

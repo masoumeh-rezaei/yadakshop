@@ -57,6 +57,17 @@ class ArtifactSecurity(unittest.TestCase):
             deploy.unpack_artifact(archive(VALID[:-1]), Path(directory))
 
 class TransactionSecurity(unittest.TestCase):
+    def test_disconnected_ssh_cannot_break_coordinator_logging(self):
+        with patch('builtins.print', side_effect=BrokenPipeError), \
+             patch.object(deploy, 'silence_stdout') as silence:
+            deploy.log('Recovery must continue')
+            silence.assert_called_once()
+
+    def test_interruption_is_not_swallowed_as_a_readiness_retry(self):
+        with patch.object(deploy, 'runtime_check', side_effect=deploy.DeploymentInterrupted('hangup')):
+            with self.assertRaises(deploy.DeploymentInterrupted):
+                deploy.wait_check(Path('/unused'))
+
     def test_failed_activation_restores_state_and_panel(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
