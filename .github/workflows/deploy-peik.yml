@@ -1,0 +1,82 @@
+name: Peik CI and production deployment
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peik-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.14.0'
+      - name: Verify deployment security and rollback
+        run: python3 -m unittest discover -s ops/peik-deploy -p 'test_*.py' -v
+      - name: Build backend and panel from lockfiles
+        run: bash .github/scripts/build-peik.sh
+      - name: Store release artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: peik-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/peik-release.tar.gz
+            ${{ runner.temp }}/peik-release.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  deploy:
+    name: Deploy Peik production
+    needs: build
+    if: github.repository == 'masoumeh-rezaei/yadakshop' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    concurrency:
+      group: peik-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: peik-${{ github.sha }}
+          path: ${{ runner.temp }}/peik-artifact
+      - name: Upload and activate with restricted SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.PEIK_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PEIK_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS"
+          key_file=$(mktemp "$RUNNER_TEMP/peik-key.XXXXXX")
+          hosts_file=$(mktemp "$RUNNER_TEMP/peik-hosts.XXXXXX")
+          trap 'rm -f -- "$key_file" "$hosts_file"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$key_file"
+          printf '%s\n' "$KNOWN_HOSTS" > "$hosts_file"
+          cd "$RUNNER_TEMP/peik-artifact"
+          sha256sum --check peik-release.sha256
+          ssh_args=(-i "$key_file" -p 19322 -o BatchMode=yes -o IdentitiesOnly=yes
+            -o IdentityAgent=none -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$hosts_file"
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+          ssh "${ssh_args[@]}" peikdeploy@87.107.0.98 probe
+          ssh "${ssh_args[@]}" peikdeploy@87.107.0.98 "deploy $RELEASE_SHA" < peik-release.tar.gz
