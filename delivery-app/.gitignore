@@ -10,6 +10,7 @@ node_modules/
 
 # Expo
 .expo/
+.gradle-local/
 dist/
 web-build/
 expo-env.d.ts
