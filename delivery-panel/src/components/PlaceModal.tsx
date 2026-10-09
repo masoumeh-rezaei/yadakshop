@@ -5,14 +5,13 @@ import type { SavedPlace } from '../types';
 
 interface Props {
   token: string;
-  place: SavedPlace | null;
   coordinates: { latitude: number; longitude: number };
   onClose: () => void;
   onSaved: (place: SavedPlace) => void;
 }
 
-export function PlaceModal({ token, place, coordinates, onClose, onSaved }: Props) {
-  const [name, setName] = useState(place?.name ?? '');
+export function PlaceModal({ token, coordinates, onClose, onSaved }: Props) {
+  const [name, setName] = useState('');
   const [latitude, setLatitude] = useState(String(coordinates.latitude));
   const [longitude, setLongitude] = useState(String(coordinates.longitude));
   const [error, setError] = useState('');
@@ -31,10 +30,8 @@ export function PlaceModal({ token, place, coordinates, onClose, onSaved }: Prop
     setSaving(true);
     setError('');
     try {
-      const saved = place
-        ? await api.updatePlace(token, place.id, input)
-        : await api.createPlace(token, input);
-      onSaved({ ...place, ...saved });
+      const saved = await api.createPlace(token, input);
+      onSaved(saved);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'ذخیره مکان ناموفق بود.');
     } finally { setSaving(false); }
@@ -44,8 +41,8 @@ export function PlaceModal({ token, place, coordinates, onClose, onSaved }: Prop
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="place-modal-title">
         <header><div><span className="modal-icon"><MapPin size={20} /></span><div>
-          <h3 id="place-modal-title">{place ? 'ویرایش مکان' : 'افزودن مکان'}</h3>
-          <p>{place ? 'نام یا مختصات پین را تغییر دهید.' : 'برای پین انتخاب‌شده یک نام ثبت کنید.'}</p>
+          <h3 id="place-modal-title">افزودن مکان</h3>
+          <p>برای پین انتخاب‌شده یک نام ثبت کنید.</p>
         </div></div><button className="icon-button" onClick={onClose} aria-label="بستن"><X size={19} /></button></header>
         <form onSubmit={submit}>
           <label htmlFor="place-name">نام مکان</label>
@@ -59,7 +56,7 @@ export function PlaceModal({ token, place, coordinates, onClose, onSaved }: Prop
           </div>
           {error && <div className="form-error">{error}</div>}
           <footer><button type="button" className="secondary-button" onClick={onClose}>انصراف</button>
-            <button className="primary-button" disabled={saving}>{saving && <RefreshCw className="spin" size={16} />}{place ? 'ذخیره تغییرات' : 'ثبت مکان'}</button></footer>
+            <button className="primary-button" disabled={saving}>{saving && <RefreshCw className="spin" size={16} />}ثبت مکان</button></footer>
         </form>
       </div>
     </div>

@@ -80,4 +80,55 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { id, isActive } });
 }));
 
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    res.status(400).json({ success: false, message: 'شناسه پیک معتبر نیست' });
+    return;
+  }
+  if (id === req.user?.id) {
+    res.status(400).json({ success: false, message: 'نمی‌توانید حساب خودتان را حذف کنید' });
+    return;
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute<(RowDataPacket & { role: 'ADMIN' | 'DRIVER' })[]>(
+      'SELECT role FROM users WHERE id = ? FOR UPDATE',
+      [id],
+    );
+    const target = rows[0];
+    if (!target) {
+      await connection.rollback();
+      res.status(404).json({ success: false, message: 'پیک پیدا نشد' });
+      return;
+    }
+    if (target.role !== 'DRIVER') {
+      await connection.rollback();
+      res.status(400).json({ success: false, message: 'فقط حساب پیک قابل حذف است' });
+      return;
+    }
+
+    await connection.execute('DELETE FROM locations WHERE user_id = ?', [id]);
+    const [result] = await connection.execute<ResultSetHeader>(
+      'DELETE FROM users WHERE id = ? AND role = ?',
+      [id, 'DRIVER'],
+    );
+    if (!result.affectedRows) {
+      await connection.rollback();
+      res.status(404).json({ success: false, message: 'پیک پیدا نشد' });
+      return;
+    }
+
+    await connection.commit();
+    res.status(204).send();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}));
+
 export default router;

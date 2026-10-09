@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, CircleUserRound, Edit2, LogOut, Map, MapPinned, Menu, MousePointer2, Navigation, Plus, RefreshCw, Search, Trash2, Truck, UserCog, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { Activity, CircleUserRound, LogOut, Map, MapPinned, Menu, MousePointer2, Navigation, Plus, RefreshCw, Search, Trash2, Truck, UserCog, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { api, API_URL, ApiError } from '../api';
 import { useAuth } from '../auth';
@@ -32,9 +32,9 @@ export function Dashboard() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [showAddUser, setShowAddUser] = useState(false);
+  const [deletingUserIds, setDeletingUserIds] = useState<number[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [placementMode, setPlacementMode] = useState(false);
-  const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
   const [draftCoordinates, setDraftCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const handleError = useCallback((requestError: unknown) => {
@@ -88,16 +88,27 @@ export function Dashboard() {
     try { await api.setUserStatus(token, target.id, nextStatus); setUsers((current) => current.map((item) => item.id === target.id ? { ...item, isActive: nextStatus } : item)); }
     catch (requestError) { handleError(requestError); }
   };
-  const startPlacement = () => { setEditingPlace(null); setDraftCoordinates(null); setPlacementMode(true); setError(''); };
-  const editPlace = (place: SavedPlace) => { setEditingPlace(place); setDraftCoordinates({ latitude: Number(place.latitude), longitude: Number(place.longitude) }); setPlacementMode(false); };
+  const deleteUser = async (target: User) => {
+    if (!token || target.role !== 'DRIVER' || deletingUserIds.includes(target.id) ||
+        !window.confirm(`حساب پیک «${target.fullName || target.phone}» و تمام سوابق موقعیتش حذف شود؟ این کار قابل بازگشت نیست.`)) return;
+    setDeletingUserIds((current) => [...current, target.id]);
+    try {
+      await api.deleteUser(token, target.id);
+      setUsers((current) => current.filter((item) => item.id !== target.id));
+      setLocations((current) => current.filter((item) => item.userId !== target.id));
+      setSelectedId((current) => current === target.id ? null : current);
+    } catch (requestError) { handleError(requestError); }
+    finally { setDeletingUserIds((current) => current.filter((id) => id !== target.id)); }
+  };
+  const startPlacement = () => { setDraftCoordinates(null); setPlacementMode(true); setError(''); };
   const deletePlace = async (place: SavedPlace) => {
     if (!token || !window.confirm(`مکان «${place.name}» حذف شود؟`)) return;
     try { await api.deletePlace(token, place.id); setPlaces((current) => current.filter((item) => item.id !== place.id)); setSelectedPlaceId((current) => current === place.id ? null : current); }
     catch (requestError) { handleError(requestError); }
   };
-  const closePlaceModal = () => { setEditingPlace(null); setDraftCoordinates(null); setPlacementMode(false); };
+  const closePlaceModal = () => { setDraftCoordinates(null); setPlacementMode(false); };
   const savePlace = (saved: SavedPlace) => {
-    setPlaces((current) => current.some((item) => item.id === saved.id) ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved]);
+    setPlaces((current) => [...current, saved]);
     setSelectedPlaceId(saved.id); closePlaceModal();
   };
 
@@ -138,15 +149,15 @@ export function Dashboard() {
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام مکان" /></div>
             <div className="driver-list place-list">{visiblePlaces.map((place) => <div key={place.id} className={`place-item ${selectedPlaceId === place.id ? 'selected' : ''}`}>
               <button className="place-item-main" onClick={() => setSelectedPlaceId(place.id)}><span className="place-avatar"><MapPinned size={17} /></span><span className="driver-info"><b>{place.name}</b><small dir="ltr">{Number(place.latitude).toFixed(5)}, {Number(place.longitude).toFixed(5)}</small></span></button>
-              <span className="place-actions"><button onClick={() => editPlace(place)} title="ویرایش"><Edit2 size={15} /></button><button className="danger" onClick={() => deletePlace(place)} title="حذف"><Trash2 size={15} /></button></span></div>)}
+              <span className="place-actions"><button className="danger" onClick={() => deletePlace(place)} title="حذف"><Trash2 size={15} /></button></span></div>)}
               {!visiblePlaces.length && <div className="empty-state">مکانی با این نام پیدا نشد.</div>}</div>
             {selectedPlace && <div className="selected-driver"><span>مکان انتخاب‌شده</span><b>{selectedPlace.name}</b><small dir="ltr">{Number(selectedPlace.latitude).toFixed(7)}, {Number(selectedPlace.longitude).toFixed(7)}</small></div>}
           </aside></section> :
         <section className="users-card"><div className="users-toolbar"><div><h2>کاربران سامانه</h2><p>حساب مدیران و پیک‌ها را مدیریت کنید.</p></div><button className="primary-button" onClick={() => setShowAddUser(true)}><Plus size={18} /> افزودن کاربر</button></div>
           <div className="table-search search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی کاربر" /></div>
-          <div className="users-table-wrap"><table><thead><tr><th>کاربر</th><th>شماره موبایل</th><th>نقش</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{users.filter((item) => `${item.fullName || ''} ${item.phone}`.includes(search.trim())).map((item) => { const active = item.isActive === true || item.isActive === 1; return <tr key={item.id}><td><div className="table-user"><span className="avatar">{(item.fullName || 'ک').slice(0, 1)}</span><b>{item.fullName || 'بدون نام'}</b></div></td><td dir="ltr">{item.phone}</td><td><span className={`role-badge ${item.role.toLowerCase()}`}>{item.role === 'ADMIN' ? <UserCog size={14} /> : <Truck size={14} />}{item.role === 'ADMIN' ? 'مدیر' : 'پیک'}</span></td><td><span className={`status-badge ${active ? 'active' : ''}`}><i />{active ? 'فعال' : 'غیرفعال'}</span></td><td><button className="text-button" disabled={item.id === admin?.id} onClick={() => toggleStatus(item)}>{active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button></td></tr>; })}</tbody></table></div></section>}
+          <div className="users-table-wrap"><table><thead><tr><th>کاربر</th><th>شماره موبایل</th><th>نقش</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{users.filter((item) => `${item.fullName || ''} ${item.phone}`.includes(search.trim())).map((item) => { const active = item.isActive === true || item.isActive === 1; const deleting = deletingUserIds.includes(item.id); return <tr key={item.id}><td><div className="table-user"><span className="avatar">{(item.fullName || 'ک').slice(0, 1)}</span><b>{item.fullName || 'بدون نام'}</b></div></td><td dir="ltr">{item.phone}</td><td><span className={`role-badge ${item.role.toLowerCase()}`}>{item.role === 'ADMIN' ? <UserCog size={14} /> : <Truck size={14} />}{item.role === 'ADMIN' ? 'مدیر' : 'پیک'}</span></td><td><span className={`status-badge ${active ? 'active' : ''}`}><i />{active ? 'فعال' : 'غیرفعال'}</span></td><td><button className="text-button" disabled={item.id === admin?.id || deleting} onClick={() => toggleStatus(item)}>{active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button>{item.role === 'DRIVER' && <button className="text-button delete-user-button" disabled={deleting} onClick={() => deleteUser(item)}>{deleting ? 'در حال حذف…' : 'حذف پیک'}</button>}</td></tr>; })}</tbody></table></div></section>}
     </main>
     {showAddUser && token && <AddUserModal token={token} onClose={() => setShowAddUser(false)} onCreated={(newUser) => { setUsers((current) => [newUser, ...current]); setShowAddUser(false); }} />}
-    {token && draftCoordinates && <PlaceModal token={token} place={editingPlace} coordinates={draftCoordinates} onClose={closePlaceModal} onSaved={savePlace} />}
+    {token && draftCoordinates && <PlaceModal token={token} coordinates={draftCoordinates} onClose={closePlaceModal} onSaved={savePlace} />}
   </div>;
 }

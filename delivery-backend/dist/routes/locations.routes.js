@@ -21,9 +21,29 @@ router.post('/', auth_js_1.authenticate, (0, auth_js_1.authorize)('DRIVER'), (0,
         res.status(400).json({ success: false, message: 'اطلاعات موقعیت مکانی معتبر نیست' });
         return;
     }
-    const [result] = await database_js_1.default.execute('INSERT INTO locations (user_id, latitude, longitude, accuracy, recorded_at) VALUES (?, ?, ?, ?, ?)', [req.user.id, latitude, longitude, accuracy, recordedAt]);
+    const connection = await database_js_1.default.getConnection();
+    let locationId;
+    try {
+        await connection.beginTransaction();
+        const [users] = await connection.execute('SELECT id FROM users WHERE id = ? AND role = ? AND is_active = 1 LOCK IN SHARE MODE', [req.user.id, 'DRIVER']);
+        if (!users.length) {
+            await connection.rollback();
+            res.status(401).json({ success: false, message: 'حساب پیک فعال نیست یا حذف شده است' });
+            return;
+        }
+        const [result] = await connection.execute('INSERT INTO locations (user_id, latitude, longitude, accuracy, recorded_at) VALUES (?, ?, ?, ?, ?)', [req.user.id, latitude, longitude, accuracy, recordedAt]);
+        locationId = Number(result.insertId);
+        await connection.commit();
+    }
+    catch (error) {
+        await connection.rollback();
+        throw error;
+    }
+    finally {
+        connection.release();
+    }
     const location = {
-        id: Number(result.insertId),
+        id: locationId,
         userId: req.user.id,
         phone: req.user.phone,
         fullName: req.user.fullName,

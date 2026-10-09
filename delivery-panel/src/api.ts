@@ -32,8 +32,6 @@ export const api = {
   places: (token: string) => request<SavedPlace[]>('/api/places', {}, token),
   createPlace: (token: string, input: { name: string; latitude: number; longitude: number }) =>
     request<SavedPlace>('/api/places', { method: 'POST', body: JSON.stringify(input) }, token),
-  updatePlace: (token: string, id: number, input: { name: string; latitude: number; longitude: number }) =>
-    request<SavedPlace>(`/api/places/${id}`, { method: 'PUT', body: JSON.stringify(input) }, token),
   deletePlace: (token: string, id: number) =>
     request<void>(`/api/places/${id}`, { method: 'DELETE' }, token),
   createUser: (token: string, input: { phone: string; password: string; fullName: string; role: UserRole }) =>
@@ -42,4 +40,6 @@ export const api = {
     request<{ id: number; isActive: boolean }>(`/api/users/${id}/status`, {
       method: 'PATCH', body: JSON.stringify({ isActive }),
     }, token),
+  deleteUser: (token: string, id: number) =>
+    request<void>(`/api/users/${id}`, { method: 'DELETE' }, token),
 };
