@@ -29,6 +29,7 @@ export function Dashboard() {
   const [historyError, setHistoryError] = useState('');
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [mapFocusRequest, setMapFocusRequest] = useState(0);
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('connecting');
   const [loading, setLoading] = useState(true);
@@ -115,6 +116,11 @@ export function Dashboard() {
   const onlineCount = locations.filter((item) => online(item.recordedAt)).length;
   const selected = locations.find((item) => item.userId === selectedId);
   const selectedPlace = places.find((item) => item.id === selectedPlaceId) ?? null;
+  const selectDriver = useCallback((id: number) => {
+    if (id !== selectedId) setHistoryLoading(true);
+    setSelectedId(id);
+    setMapFocusRequest((current) => current + 1);
+  }, [selectedId]);
 
   const changeView = (next: View) => { setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
   const toggleStatus = async (target: User) => {
@@ -168,11 +174,11 @@ export function Dashboard() {
         <section className="stats-grid"><article><span className="stat-icon blue"><Truck /></span><div><small>کل پیک‌ها</small><strong>{drivers.length.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon green"><Activity /></span><div><small>آنلاین</small><strong>{onlineCount.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon amber"><Map /></span><div><small>دارای موقعیت</small><strong>{locations.length.toLocaleString('fa-IR')}</strong></div></article></section>
-        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={locationHistory} selectedId={selectedId} onSelect={setSelectedId} places={places} selectedPlaceId={selectedPlaceId} onPlaceSelect={setSelectedPlaceId} />
+        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={locationHistory} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} places={places} selectedPlaceId={selectedPlaceId} onPlaceSelect={setSelectedPlaceId} />
           <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
           <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
-            <div className="driver-list">{visibleDrivers.map((driver) => { const location = locations.find((item) => item.userId === driver.id); return <button key={driver.id} className={`driver-item ${selectedId === driver.id ? 'selected' : ''}`} onClick={() => setSelectedId(driver.id)}>
+            <div className="driver-list">{visibleDrivers.map((driver) => { const location = locations.find((item) => item.userId === driver.id); return <button key={driver.id} className={`driver-item ${selectedId === driver.id ? 'selected' : ''}`} onClick={() => selectDriver(driver.id)}>
               <span className="avatar">{(driver.fullName || 'پ').slice(0, 1)}</span><span className="driver-info"><b>{driver.fullName || 'بدون نام'}</b><small>{location ? locationTime(location.recordedAt) : 'موقعیتی ثبت نشده'}</small></span><span className={`presence ${location && online(location.recordedAt) ? 'online' : ''}`} /></button>; })}
               {!visibleDrivers.length && <div className="empty-state">پیکی با این مشخصات پیدا نشد.</div>}</div>
             {selected && <div className="selected-driver"><span>مختصات انتخاب‌شده</span><b dir="ltr">{Number(selected.latitude).toFixed(5)}, {Number(selected.longitude).toFixed(5)}</b><small>دقت تقریبی: {Math.round(Number(selected.accuracy || 0))} متر</small><small className={historyError ? 'history-error' : ''}>{historyLoading ? 'در حال دریافت مسیر ۲۴ ساعت گذشته…' : historyError || `${locationHistory.length.toLocaleString('fa-IR')} نقطه در مسیر ۲۴ ساعت گذشته`}</small></div>}
