@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import type { DriverLocation, SavedPlace } from '../types';
@@ -40,19 +40,48 @@ const draftIcon = L.divIcon({
 
 const isOnline = (date: string) => Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
 
-function FitLocations({ locations, places, history }: { locations: DriverLocation[]; places: SavedPlace[]; history: DriverLocation[] }) {
+function FitInitialLocations({ locations, places }: { locations: DriverLocation[]; places: SavedPlace[] }) {
   const map = useMap();
-  const points = history.length ? history : [...locations, ...places];
-  const first = points[0];
-  const last = points[points.length - 1];
-  const key = `${points.length}:${first?.id ?? ''}:${last?.id ?? ''}:${last?.latitude ?? ''}:${last?.longitude ?? ''}`;
+  const hasFitted = useRef(false);
   useEffect(() => {
+    if (hasFitted.current) return;
+    const points = [...locations, ...places];
     if (!points.length) return;
-    // محدوده نقشه با جابه‌جایی پیک‌ها تنظیم می‌شود؛ برای یک پیک zoom ثابت خواناتر است.
     const bounds = L.latLngBounds(points.map((item) => [Number(item.latitude), Number(item.longitude)]));
     if (points.length === 1) map.setView(bounds.getCenter(), 15);
     else map.fitBounds(bounds, { padding: [55, 55], maxZoom: 15 });
-  }, [key, map]);
+    hasFitted.current = true;
+  }, [locations, places, map]);
+  return null;
+}
+
+function FocusSelectedDriver({ location, history, request, loading }: {
+  location: DriverLocation | null;
+  history: DriverLocation[];
+  request: number;
+  loading: boolean;
+}) {
+  const map = useMap();
+  const handledRequest = useRef(0);
+  useEffect(() => {
+    if (!request || loading || handledRequest.current === request) return;
+    const points = history.length ? history : location ? [location] : [];
+    if (!points.length) return;
+
+    handledRequest.current = request;
+    const bounds = L.latLngBounds(points.map((item) => [Number(item.latitude), Number(item.longitude)]));
+    map.stop();
+    if (points.length === 1 || bounds.getNorthEast().equals(bounds.getSouthWest())) {
+      map.flyTo(bounds.getCenter(), 16, { duration: 0.65 });
+      return;
+    }
+    map.flyToBounds(bounds, {
+      paddingTopLeft: [48, 48],
+      paddingBottomRight: [48, 48],
+      maxZoom: 16,
+      duration: 0.65,
+    });
+  }, [request, loading, location, history, map]);
   return null;
 }
 
@@ -64,6 +93,8 @@ function MapClickHandler({ enabled, onClick }: { enabled: boolean; onClick?: (la
 interface Props {
   locations: DriverLocation[];
   history?: DriverLocation[];
+  historyLoading?: boolean;
+  focusRequest?: number;
   selectedId: number | null;
   onSelect: (id: number) => void;
   places?: SavedPlace[];
@@ -74,22 +105,27 @@ interface Props {
   onMapClick?: (latitude: number, longitude: number) => void;
 }
 
-export function LiveMap({ locations, history = [], selectedId, onSelect, places = [], selectedPlaceId = null,
+export function LiveMap({ locations, history = [], historyLoading = false, focusRequest = 0,
+  selectedId, onSelect, places = [], selectedPlaceId = null,
   onPlaceSelect, placementMode = false, draftCoordinates = null, onMapClick }: Props) {
   const validLocations = useMemo(() => locations.filter((item) =>
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))), [locations]);
-  const validHistory = useMemo(() => history.filter((item) =>
+  const validHistory = useMemo(() => history.filter((item) => item.userId === selectedId &&
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)) &&
     Number(item.latitude) >= -90 && Number(item.latitude) <= 90 &&
-    Number(item.longitude) >= -180 && Number(item.longitude) <= 180), [history]);
+    Number(item.longitude) >= -180 && Number(item.longitude) <= 180), [history, selectedId]);
   const route = useMemo<[number, number][]>(() => validHistory.map((item) =>
     [Number(item.latitude), Number(item.longitude)]), [validHistory]);
+  const selectedLocation = useMemo(() => validLocations.find((item) => item.userId === selectedId) ?? null,
+    [validLocations, selectedId]);
 
   return (
     <MapContainer center={defaultCenter} zoom={12} zoomControl={false} className="map">
       <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      <FitLocations locations={validLocations} places={places} history={validHistory} />
+      <FitInitialLocations locations={validLocations} places={places} />
+      <FocusSelectedDriver location={selectedLocation} history={validHistory}
+        request={focusRequest} loading={historyLoading} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
       {route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.82 }} />}
       {validLocations.map((location) => (
