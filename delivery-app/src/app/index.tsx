@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   AppState,
   KeyboardAvoidingView,
+  PermissionsAndroid,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -106,7 +107,13 @@ export default function HomeScreen() {
         return;
       }
 
-      await startBackgroundTracking();
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        // A denied notification permission does not prevent the foreground service,
+        // but granting it keeps the legally required tracking disclosure visible.
+        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      }
+
+      await startBackgroundTracking(token);
       const currentLocation = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setLastLocation(currentLocation);
       setIsTracking(true);

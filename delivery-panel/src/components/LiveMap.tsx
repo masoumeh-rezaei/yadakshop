@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import L from 'leaflet';
-import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import type { DriverLocation, SavedPlace } from '../types';
 
 const defaultCenter: [number, number] = [35.6892, 51.389];
@@ -40,10 +40,12 @@ const draftIcon = L.divIcon({
 
 const isOnline = (date: string) => Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
 
-function FitLocations({ locations, places }: { locations: DriverLocation[]; places: SavedPlace[] }) {
+function FitLocations({ locations, places, history }: { locations: DriverLocation[]; places: SavedPlace[]; history: DriverLocation[] }) {
   const map = useMap();
-  const points = [...locations, ...places];
-  const key = points.map((item) => `${item.id}:${item.latitude}:${item.longitude}`).join('|');
+  const points = history.length ? history : [...locations, ...places];
+  const first = points[0];
+  const last = points[points.length - 1];
+  const key = `${points.length}:${first?.id ?? ''}:${last?.id ?? ''}:${last?.latitude ?? ''}:${last?.longitude ?? ''}`;
   useEffect(() => {
     if (!points.length) return;
     // محدوده نقشه با جابه‌جایی پیک‌ها تنظیم می‌شود؛ برای یک پیک zoom ثابت خواناتر است.
@@ -61,6 +63,7 @@ function MapClickHandler({ enabled, onClick }: { enabled: boolean; onClick?: (la
 
 interface Props {
   locations: DriverLocation[];
+  history?: DriverLocation[];
   selectedId: number | null;
   onSelect: (id: number) => void;
   places?: SavedPlace[];
@@ -71,17 +74,24 @@ interface Props {
   onMapClick?: (latitude: number, longitude: number) => void;
 }
 
-export function LiveMap({ locations, selectedId, onSelect, places = [], selectedPlaceId = null,
+export function LiveMap({ locations, history = [], selectedId, onSelect, places = [], selectedPlaceId = null,
   onPlaceSelect, placementMode = false, draftCoordinates = null, onMapClick }: Props) {
   const validLocations = useMemo(() => locations.filter((item) =>
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))), [locations]);
+  const validHistory = useMemo(() => history.filter((item) =>
+    Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)) &&
+    Number(item.latitude) >= -90 && Number(item.latitude) <= 90 &&
+    Number(item.longitude) >= -180 && Number(item.longitude) <= 180), [history]);
+  const route = useMemo<[number, number][]>(() => validHistory.map((item) =>
+    [Number(item.latitude), Number(item.longitude)]), [validHistory]);
 
   return (
     <MapContainer center={defaultCenter} zoom={12} zoomControl={false} className="map">
       <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      <FitLocations locations={validLocations} places={places} />
+      <FitLocations locations={validLocations} places={places} history={validHistory} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
+      {route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.82 }} />}
       {validLocations.map((location) => (
         <Marker key={location.userId} position={[Number(location.latitude), Number(location.longitude)]}
           icon={markerIcon(isOnline(location.recordedAt), selectedId === location.userId)}

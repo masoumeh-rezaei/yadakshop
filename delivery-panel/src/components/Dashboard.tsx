@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, CircleUserRound, LogOut, Map, MapPinned, Menu, MousePointer2, Navigation, Plus, RefreshCw, Search, Trash2, Truck, UserCog, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { api, API_URL, ApiError } from '../api';
@@ -24,6 +24,9 @@ export function Dashboard() {
   const [view, setView] = useState<View>('map');
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<DriverLocation[]>([]);
+  const [locationHistory, setLocationHistory] = useState<DriverLocation[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
@@ -36,6 +39,8 @@ export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [placementMode, setPlacementMode] = useState(false);
   const [draftCoordinates, setDraftCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const selectedIdRef = useRef<number | null>(null);
+  selectedIdRef.current = selectedId;
 
   const handleError = useCallback((requestError: unknown) => {
     if (requestError instanceof ApiError && requestError.status === 401) { logout(); return; }
@@ -56,12 +61,42 @@ export function Dashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => {
+    if (!token || selectedId === null || view !== 'map') {
+      setLocationHistory([]);
+      setHistoryError('');
+      return;
+    }
+    const controller = new AbortController();
+    setLocationHistory([]);
+    setHistoryLoading(true);
+    setHistoryError('');
+    api.locationHistory(token, selectedId, controller.signal)
+      .then((history) => setLocationHistory((current) => {
+        const merged = new globalThis.Map([...history, ...current].map((item) => [item.id, item]));
+        return [...merged.values()].sort((left, right) =>
+          new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime());
+      }))
+      .catch((requestError) => {
+        if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
+        setHistoryError(requestError instanceof Error ? requestError.message : 'دریافت تاریخچه مسیر ناموفق بود.');
+      })
+      .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
+    return () => controller.abort();
+  }, [token, selectedId, view]);
+  useEffect(() => {
     if (!token) return;
     const socket = io(API_URL, { auth: { token }, transports: ['websocket', 'polling'], autoConnect: false });
     socket.on('connect', () => setConnection('connected'));
     socket.on('disconnect', () => setConnection('disconnected'));
     socket.on('connect_error', () => setConnection('disconnected'));
-    socket.on('location:update', (location: DriverLocation) => setLocations((current) => [location, ...current.filter((item) => item.userId !== location.userId)]));
+    socket.on('location:update', (location: DriverLocation) => {
+      setLocations((current) => [location, ...current.filter((item) => item.userId !== location.userId)]);
+      if (selectedIdRef.current === location.userId) {
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        setLocationHistory((current) => [...current.filter((item) => item.id !== location.id &&
+          new Date(item.recordedAt).getTime() >= cutoff), location]);
+      }
+    });
     const connectTimer = window.setTimeout(() => socket.connect(), 0);
     return () => { window.clearTimeout(connectTimer); socket.removeAllListeners(); socket.disconnect(); };
   }, [token]);
@@ -133,14 +168,14 @@ export function Dashboard() {
         <section className="stats-grid"><article><span className="stat-icon blue"><Truck /></span><div><small>کل پیک‌ها</small><strong>{drivers.length.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon green"><Activity /></span><div><small>آنلاین</small><strong>{onlineCount.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon amber"><Map /></span><div><small>دارای موقعیت</small><strong>{locations.length.toLocaleString('fa-IR')}</strong></div></article></section>
-        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} selectedId={selectedId} onSelect={setSelectedId} places={places} selectedPlaceId={selectedPlaceId} onPlaceSelect={setSelectedPlaceId} />
-          <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
+        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={locationHistory} selectedId={selectedId} onSelect={setSelectedId} places={places} selectedPlaceId={selectedPlaceId} onPlaceSelect={setSelectedPlaceId} />
+          <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
           <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
             <div className="driver-list">{visibleDrivers.map((driver) => { const location = locations.find((item) => item.userId === driver.id); return <button key={driver.id} className={`driver-item ${selectedId === driver.id ? 'selected' : ''}`} onClick={() => setSelectedId(driver.id)}>
               <span className="avatar">{(driver.fullName || 'پ').slice(0, 1)}</span><span className="driver-info"><b>{driver.fullName || 'بدون نام'}</b><small>{location ? locationTime(location.recordedAt) : 'موقعیتی ثبت نشده'}</small></span><span className={`presence ${location && online(location.recordedAt) ? 'online' : ''}`} /></button>; })}
               {!visibleDrivers.length && <div className="empty-state">پیکی با این مشخصات پیدا نشد.</div>}</div>
-            {selected && <div className="selected-driver"><span>مختصات انتخاب‌شده</span><b dir="ltr">{Number(selected.latitude).toFixed(5)}, {Number(selected.longitude).toFixed(5)}</b><small>دقت تقریبی: {Math.round(Number(selected.accuracy || 0))} متر</small></div>}
+            {selected && <div className="selected-driver"><span>مختصات انتخاب‌شده</span><b dir="ltr">{Number(selected.latitude).toFixed(5)}, {Number(selected.longitude).toFixed(5)}</b><small>دقت تقریبی: {Math.round(Number(selected.accuracy || 0))} متر</small><small className={historyError ? 'history-error' : ''}>{historyLoading ? 'در حال دریافت مسیر ۲۴ ساعت گذشته…' : historyError || `${locationHistory.length.toLocaleString('fa-IR')} نقطه در مسیر ۲۴ ساعت گذشته`}</small></div>}
           </aside></section></> : view === 'places' ?
         <section className={`map-card places-card ${placementMode ? 'placing' : ''}`}><div className="map-panel"><LiveMap locations={[]} selectedId={null} onSelect={() => undefined} places={visiblePlaces} selectedPlaceId={selectedPlaceId} onPlaceSelect={setSelectedPlaceId} placementMode={placementMode} draftCoordinates={draftCoordinates} onMapClick={(latitude, longitude) => setDraftCoordinates({ latitude, longitude })} />
           {placementMode && !draftCoordinates && <div className="placement-hint"><MousePointer2 size={18} /> محل موردنظر را روی نقشه انتخاب کنید.</div>}</div>

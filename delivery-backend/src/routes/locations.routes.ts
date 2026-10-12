@@ -81,7 +81,6 @@ router.get('/latest', authenticate, authorize('ADMIN'), asyncHandler(async (_req
 
 router.get('/:userId/history', authenticate, authorize('ADMIN'), asyncHandler(async (req, res) => {
   const userId = Number(req.params.userId);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
   if (!Number.isSafeInteger(userId) || userId <= 0) {
     res.status(400).json({ success: false, message: 'شناسه پیک معتبر نیست' });
     return;
@@ -90,8 +89,10 @@ router.get('/:userId/history', authenticate, authorize('ADMIN'), asyncHandler(as
     `SELECT l.id, l.user_id AS userId, u.phone, u.full_name AS fullName,
             l.latitude, l.longitude, l.accuracy, l.recorded_at AS recordedAt
      FROM locations l INNER JOIN users u ON u.id = l.user_id
-     WHERE l.user_id = ? AND u.role = 'DRIVER' ORDER BY l.recorded_at DESC LIMIT ${limit}`,
-    [userId],
+     WHERE l.user_id = ? AND u.role = 'DRIVER'
+       AND l.recorded_at >= ? AND l.recorded_at <= ?
+     ORDER BY l.recorded_at ASC, l.id ASC`,
+    [userId, new Date(Date.now() - 24 * 60 * 60 * 1000), new Date()],
   );
   res.json({ success: true, data: rows });
 }));

@@ -29,6 +29,8 @@ export const api = {
   me: (token: string) => request<User>('/api/auth/me', {}, token),
   users: (token: string) => request<User[]>('/api/users', {}, token),
   latestLocations: (token: string) => request<DriverLocation[]>('/api/locations/latest', {}, token),
+  locationHistory: (token: string, userId: number, signal?: AbortSignal) =>
+    request<DriverLocation[]>(`/api/locations/${userId}/history`, { signal }, token),
   places: (token: string) => request<SavedPlace[]>('/api/places', {}, token),
   createPlace: (token: string, input: { name: string; latitude: number; longitude: number }) =>
     request<SavedPlace>('/api/places', { method: 'POST', body: JSON.stringify(input) }, token),

@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const {
   AndroidConfig,
+  withAndroidManifest,
+  withAppBuildGradle,
   withDangerousMod,
   withMainApplication,
 } = require('expo/config-plugins');
@@ -79,11 +81,61 @@ class AppExitInfoPackage : ReactPackage {
 
 const withAppExitInfo = (config) => {
   config = withMainApplication(config, (modConfig) => {
-    if (!modConfig.modResults.contents.includes('add(AppExitInfoPackage())')) {
+    if (!modConfig.modResults.contents.includes('add(DeliveryTrackingPackage())')) {
       modConfig.modResults.contents = modConfig.modResults.contents.replace(
         /PackageList\(this\)\.packages\.apply \{/,
-        'PackageList(this).packages.apply {\n          add(AppExitInfoPackage())',
+        'PackageList(this).packages.apply {\n          add(AppExitInfoPackage())\n          add(DeliveryTrackingPackage())',
       );
+    }
+    return modConfig;
+  });
+
+  config = withAppBuildGradle(config, (modConfig) => {
+    const dependency = 'implementation("com.google.android.gms:play-services-location:21.0.1")';
+    if (!modConfig.modResults.contents.includes(dependency)) {
+      modConfig.modResults.contents = modConfig.modResults.contents.replace(
+        /dependencies\s*\{/,
+        `dependencies {\n    ${dependency}`,
+      );
+    }
+    return modConfig;
+  });
+
+  config = withAndroidManifest(config, (modConfig) => {
+    const manifest = modConfig.modResults.manifest;
+    const permissions = manifest['uses-permission'] || (manifest['uses-permission'] = []);
+    for (const name of [
+      'android.permission.POST_NOTIFICATIONS',
+      'android.permission.RECEIVE_BOOT_COMPLETED',
+    ]) {
+      if (!permissions.some((item) => item.$['android:name'] === name)) {
+        permissions.push({ $: { 'android:name': name } });
+      }
+    }
+
+    const application = manifest.application[0];
+    application.service = application.service || [];
+    if (!application.service.some((item) => item.$['android:name'] === '.DeliveryLocationService')) {
+      application.service.push({
+        $: {
+          'android:name': '.DeliveryLocationService',
+          'android:enabled': 'true',
+          'android:exported': 'false',
+          'android:foregroundServiceType': 'location',
+          'android:stopWithTask': 'false',
+        },
+      });
+    }
+    application.receiver = application.receiver || [];
+    if (!application.receiver.some((item) => item.$['android:name'] === '.TrackingBootReceiver')) {
+      application.receiver.push({
+        $: {
+          'android:name': '.TrackingBootReceiver',
+          'android:enabled': 'true',
+          'android:exported': 'true',
+        },
+        'intent-filter': [{ action: [{ $: { 'android:name': 'android.intent.action.BOOT_COMPLETED' } }] }],
+      });
     }
     return modConfig;
   });
@@ -99,9 +151,17 @@ const withAppExitInfo = (config) => {
       ...packageName.split('.'),
     );
     await fs.promises.mkdir(javaDirectory, { recursive: true });
+    const trackerSourceDirectory = path.join(__dirname, 'android-tracker');
+    const trackerSources = await fs.promises.readdir(trackerSourceDirectory);
     await Promise.all([
       fs.promises.writeFile(path.join(javaDirectory, 'AppExitInfoModule.kt'), moduleSource),
       fs.promises.writeFile(path.join(javaDirectory, 'AppExitInfoPackage.kt'), packageSource),
+      ...trackerSources
+        .filter((fileName) => fileName.endsWith('.kt'))
+        .map((fileName) => fs.promises.copyFile(
+          path.join(trackerSourceDirectory, fileName),
+          path.join(javaDirectory, fileName),
+        )),
     ]);
     return modConfig;
   }]);
