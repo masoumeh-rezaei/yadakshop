@@ -97,8 +97,6 @@ export function Dashboard() {
     return phrase ? places.filter((item) => item.name.toLowerCase().includes(phrase)) : places;
   }, [places, search]);
   const onlineCount = locations.filter((item) => online(item.recordedAt)).length;
-  const selected = locations.find((item) => item.userId === selectedId);
-  const selectedDriver = drivers.find((item) => item.id === selectedId) ?? null;
   const selectedPlace = places.find((item) => item.id === selectedPlaceId) ?? null;
   const selectDriver = useCallback((id: number) => {
     historyAbortRef.current?.abort();
@@ -139,18 +137,6 @@ export function Dashboard() {
       if (!controller.signal.aborted) setHistoryLoading(false);
     }
   }, [token]);
-  const toggleHistory = useCallback(() => {
-    if (selectedId === null || historyLoading) return;
-    if (!historyVisible) {
-      void fetchHistory(selectedId);
-      return;
-    }
-    setHistoryVisible(false);
-    setLocationHistory([]);
-    setHistoryError('');
-    setMapFocusRequest((current) => current + 1);
-  }, [selectedId, historyLoading, historyVisible, fetchHistory]);
-
   const changeView = (next: View) => { historyAbortRef.current?.abort(); setHistoryVisible(false); setLocationHistory([]); setHistoryLoading(false); setHistoryError(''); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
   const toggleStatus = async (target: User) => {
     if (!token) return;
@@ -207,7 +193,6 @@ export function Dashboard() {
           <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
           <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
-            {selectedDriver && <div className="selected-driver selected-driver-card"><span>پیک انتخاب‌شده</span><b>{selectedDriver.fullName || selectedDriver.phone}</b>{selected ? <><small dir="ltr">{Number(selected.latitude).toFixed(5)}, {Number(selected.longitude).toFixed(5)}</small><small>دقت تقریبی: {Math.round(Number(selected.accuracy || 0))} متر</small></> : <small>آخرین موقعیت این پیک ثبت نشده است.</small>}{historyVisible && <small>{locationHistory.length.toLocaleString('fa-IR')} نقطه در مسیر ۲۴ ساعت گذشته</small>}{historyError && <small className="history-error">{historyError}</small>}<button className={`history-toggle-button ${historyVisible ? 'active' : ''}`} disabled={historyLoading} onClick={toggleHistory}>{historyLoading ? <><RefreshCw className="spin" size={14} /> در حال دریافت مسیر…</> : historyVisible ? 'مخفی کردن مسیر' : 'نمایش مسیر ۲۴ ساعت گذشته'}</button></div>}
             <div className="driver-list">{visibleDrivers.map((driver) => { const location = locations.find((item) => item.userId === driver.id); return <button key={driver.id} className={`driver-item ${selectedId === driver.id ? 'selected' : ''}`} onClick={() => selectDriver(driver.id)}>
               <span className="avatar">{(driver.fullName || 'پ').slice(0, 1)}</span><span className="driver-info"><b>{driver.fullName || 'بدون نام'}</b><small>{location ? locationTime(location.recordedAt) : 'موقعیتی ثبت نشده'}</small></span><span className={`presence ${location && online(location.recordedAt) ? 'online' : ''}`} /></button>; })}
               {!visibleDrivers.length && <div className="empty-state">پیکی با این مشخصات پیدا نشد.</div>}</div>

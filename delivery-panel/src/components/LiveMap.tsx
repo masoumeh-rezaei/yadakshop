@@ -72,14 +72,14 @@ function FocusSelectedDriver({ location, history, request, loading }: {
     const bounds = L.latLngBounds(points.map((item) => [Number(item.latitude), Number(item.longitude)]));
     map.stop();
     if (points.length === 1 || bounds.getNorthEast().equals(bounds.getSouthWest())) {
-      map.flyTo(bounds.getCenter(), 16, { duration: 0.65 });
+      map.setView(bounds.getCenter(), 16, { animate: false });
       return;
     }
-    map.flyToBounds(bounds, {
+    map.fitBounds(bounds, {
       paddingTopLeft: [48, 48],
       paddingBottomRight: [48, 48],
       maxZoom: 16,
-      duration: 0.65,
+      animate: false,
     });
   }, [request, loading, location, history, map]);
   return null;
