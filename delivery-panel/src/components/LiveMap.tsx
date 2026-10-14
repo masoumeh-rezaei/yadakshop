@@ -109,6 +109,7 @@ interface Props {
   focusRequest?: number;
   selectedId: number | null;
   onSelect: (id: number) => void;
+  onHistoryRequest?: (id: number) => void;
   places?: SavedPlace[];
   selectedPlaceId?: number | null;
   placeFocusRequest?: number;
@@ -119,7 +120,7 @@ interface Props {
 }
 
 export function LiveMap({ locations, history = [], historyLoading = false, focusRequest = 0,
-  selectedId, onSelect, places = [], selectedPlaceId = null,
+  selectedId, onSelect, onHistoryRequest, places = [], selectedPlaceId = null,
   placeFocusRequest = 0, onPlaceSelect, placementMode = false, draftCoordinates = null, onMapClick }: Props) {
   const validLocations = useMemo(() => locations.filter((item) =>
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))), [locations]);
@@ -148,10 +149,12 @@ export function LiveMap({ locations, history = [], historyLoading = false, focus
         <Marker key={location.userId} position={[Number(location.latitude), Number(location.longitude)]}
           icon={markerIcon(isOnline(location.recordedAt), selectedId === location.userId)}
           eventHandlers={{ click: () => onSelect(location.userId) }}>
-          <Popup>
+          <Popup autoPan={false}>
             <strong>{location.fullName || 'پیک بدون نام'}</strong><br />
             <span>{location.phone}</span><br />
             <small>آخرین ارسال: {new Date(location.recordedAt).toLocaleTimeString('fa-IR')}</small>
+            {onHistoryRequest && <button type="button" className="map-popup-history-button"
+              onClick={() => onHistoryRequest(location.userId)}>نمایش تاریخچه کاربر</button>}
           </Popup>
         </Marker>
       ))}
