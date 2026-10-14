@@ -113,23 +113,18 @@ export function Dashboard() {
     setSelectedPlaceId(id);
     setPlaceFocusRequest((current) => current + 1);
   }, []);
-  const toggleHistory = useCallback(async () => {
-    if (!token || selectedId === null || historyLoading) return;
-    if (historyVisible) {
-      setHistoryVisible(false);
-      setLocationHistory([]);
-      setHistoryError('');
-      setMapFocusRequest((current) => current + 1);
-      return;
-    }
-
+  const fetchHistory = useCallback(async (driverId: number) => {
+    if (!token) return;
     historyAbortRef.current?.abort();
     const controller = new AbortController();
     historyAbortRef.current = controller;
+    setSelectedId(driverId);
+    setLocationHistory([]);
+    setHistoryVisible(false);
     setHistoryLoading(true);
     setHistoryError('');
     try {
-      const history = await api.locationHistory(token, selectedId, controller.signal);
+      const history = await api.locationHistory(token, driverId, controller.signal);
       if (!history.length) {
         setHistoryError('در ۲۴ ساعت گذشته مسیری برای این پیک ثبت نشده است.');
         return;
@@ -143,7 +138,18 @@ export function Dashboard() {
     } finally {
       if (!controller.signal.aborted) setHistoryLoading(false);
     }
-  }, [token, selectedId, historyLoading, historyVisible]);
+  }, [token]);
+  const toggleHistory = useCallback(() => {
+    if (selectedId === null || historyLoading) return;
+    if (!historyVisible) {
+      void fetchHistory(selectedId);
+      return;
+    }
+    setHistoryVisible(false);
+    setLocationHistory([]);
+    setHistoryError('');
+    setMapFocusRequest((current) => current + 1);
+  }, [selectedId, historyLoading, historyVisible, fetchHistory]);
 
   const changeView = (next: View) => { historyAbortRef.current?.abort(); setHistoryVisible(false); setLocationHistory([]); setHistoryLoading(false); setHistoryError(''); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
   const toggleStatus = async (target: User) => {
@@ -197,7 +203,7 @@ export function Dashboard() {
         <section className="stats-grid"><article><span className="stat-icon blue"><Truck /></span><div><small>کل پیک‌ها</small><strong>{drivers.length.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon green"><Activity /></span><div><small>آنلاین</small><strong>{onlineCount.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon amber"><Map /></span><div><small>دارای موقعیت</small><strong>{locations.length.toLocaleString('fa-IR')}</strong></div></article></section>
-        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
+        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} onHistoryRequest={(id) => { void fetchHistory(id); }} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
           <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
           <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
