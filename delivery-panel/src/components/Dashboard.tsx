@@ -27,7 +27,6 @@ export function Dashboard() {
   const [locationHistory, setLocationHistory] = useState<DriverLocation[]>([]);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState('');
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
@@ -103,7 +102,6 @@ export function Dashboard() {
     setLocationHistory([]);
     setHistoryVisible(false);
     setHistoryLoading(false);
-    setHistoryError('');
     setSelectedId(id);
     setMapFocusRequest((current) => current + 1);
   }, []);
@@ -112,7 +110,7 @@ export function Dashboard() {
     setPlaceFocusRequest((current) => current + 1);
   }, []);
   const fetchHistory = useCallback(async (driverId: number) => {
-    if (!token) return;
+    if (!token) return 'error' as const;
     historyAbortRef.current?.abort();
     const controller = new AbortController();
     historyAbortRef.current = controller;
@@ -120,24 +118,23 @@ export function Dashboard() {
     setLocationHistory([]);
     setHistoryVisible(false);
     setHistoryLoading(true);
-    setHistoryError('');
     try {
       const history = await api.locationHistory(token, driverId, controller.signal);
       if (!history.length) {
-        setHistoryError('در ۲۴ ساعت گذشته مسیری برای این پیک ثبت نشده است.');
-        return;
+        return 'empty' as const;
       }
       setLocationHistory(history);
       setHistoryVisible(true);
       setMapFocusRequest((current) => current + 1);
+      return 'success' as const;
     } catch (requestError) {
-      if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
-      setHistoryError(requestError instanceof Error ? requestError.message : 'دریافت تاریخچه مسیر ناموفق بود.');
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return 'error' as const;
+      return 'error' as const;
     } finally {
       if (!controller.signal.aborted) setHistoryLoading(false);
     }
   }, [token]);
-  const changeView = (next: View) => { historyAbortRef.current?.abort(); setHistoryVisible(false); setLocationHistory([]); setHistoryLoading(false); setHistoryError(''); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
+  const changeView = (next: View) => { historyAbortRef.current?.abort(); setHistoryVisible(false); setLocationHistory([]); setHistoryLoading(false); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
   const toggleStatus = async (target: User) => {
     if (!token) return;
     const nextStatus = !(target.isActive === true || target.isActive === 1);
@@ -189,7 +186,7 @@ export function Dashboard() {
         <section className="stats-grid"><article><span className="stat-icon blue"><Truck /></span><div><small>کل پیک‌ها</small><strong>{drivers.length.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon green"><Activity /></span><div><small>آنلاین</small><strong>{onlineCount.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon amber"><Map /></span><div><small>دارای موقعیت</small><strong>{locations.length.toLocaleString('fa-IR')}</strong></div></article></section>
-        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} onHistoryRequest={(id) => { void fetchHistory(id); }} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
+        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} onHistoryRequest={fetchHistory} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
           <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
           <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
