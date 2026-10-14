@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import type { DriverLocation, SavedPlace } from '../types';
@@ -39,6 +39,34 @@ const draftIcon = L.divIcon({
 });
 
 const isOnline = (date: string) => Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
+
+type HistoryRequestResult = 'success' | 'empty' | 'error';
+
+function DriverPopupHistory({ driverId, onRequest }: {
+  driverId: number;
+  onRequest: (id: number) => Promise<HistoryRequestResult>;
+}) {
+  const map = useMap();
+  const [status, setStatus] = useState<'idle' | 'loading' | 'empty' | 'error'>('idle');
+
+  const requestHistory = async () => {
+    if (status === 'loading') return;
+    setStatus('loading');
+    const result = await onRequest(driverId);
+    if (result === 'success') {
+      map.closePopup();
+      return;
+    }
+    setStatus(result);
+  };
+
+  return <button type="button" className={`map-popup-history-button ${status}`}
+    disabled={status === 'loading' || status === 'empty'} onClick={() => { void requestHistory(); }}>
+    {status === 'loading' ? 'در حال بررسی تاریخچه…' :
+      status === 'empty' ? 'برای ۲۴ ساعت گذشته تاریخچه‌ای وجود ندارد' :
+        status === 'error' ? 'دریافت تاریخچه ناموفق بود؛ تلاش مجدد' : 'نمایش تاریخچه کاربر'}
+  </button>;
+}
 
 function FitInitialLocations({ locations, places }: { locations: DriverLocation[]; places: SavedPlace[] }) {
   const map = useMap();
@@ -109,7 +137,7 @@ interface Props {
   focusRequest?: number;
   selectedId: number | null;
   onSelect: (id: number) => void;
-  onHistoryRequest?: (id: number) => void;
+  onHistoryRequest?: (id: number) => Promise<HistoryRequestResult>;
   places?: SavedPlace[];
   selectedPlaceId?: number | null;
   placeFocusRequest?: number;
@@ -153,8 +181,7 @@ export function LiveMap({ locations, history = [], historyLoading = false, focus
             <strong>{location.fullName || 'پیک بدون نام'}</strong><br />
             <span>{location.phone}</span><br />
             <small>آخرین ارسال: {new Date(location.recordedAt).toLocaleTimeString('fa-IR')}</small>
-            {onHistoryRequest && <button type="button" className="map-popup-history-button"
-              onClick={() => onHistoryRequest(location.userId)}>نمایش تاریخچه کاربر</button>}
+            {onHistoryRequest && <DriverPopupHistory driverId={location.userId} onRequest={onHistoryRequest} />}
           </Popup>
         </Marker>
       ))}
