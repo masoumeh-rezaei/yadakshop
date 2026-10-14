@@ -85,6 +85,18 @@ function FocusSelectedDriver({ location, history, request, loading }: {
   return null;
 }
 
+function FocusSelectedPlace({ place, request }: { place: SavedPlace | null; request: number }) {
+  const map = useMap();
+  const handledRequest = useRef(0);
+  useEffect(() => {
+    if (!place || !request || handledRequest.current === request) return;
+    handledRequest.current = request;
+    map.stop();
+    map.flyTo([Number(place.latitude), Number(place.longitude)], 16, { duration: 0.65 });
+  }, [place, request, map]);
+  return null;
+}
+
 function MapClickHandler({ enabled, onClick }: { enabled: boolean; onClick?: (latitude: number, longitude: number) => void }) {
   useMapEvents({ click: (event) => { if (enabled) onClick?.(event.latlng.lat, event.latlng.lng); } });
   return null;
@@ -99,6 +111,7 @@ interface Props {
   onSelect: (id: number) => void;
   places?: SavedPlace[];
   selectedPlaceId?: number | null;
+  placeFocusRequest?: number;
   onPlaceSelect?: (id: number) => void;
   placementMode?: boolean;
   draftCoordinates?: { latitude: number; longitude: number } | null;
@@ -107,7 +120,7 @@ interface Props {
 
 export function LiveMap({ locations, history = [], historyLoading = false, focusRequest = 0,
   selectedId, onSelect, places = [], selectedPlaceId = null,
-  onPlaceSelect, placementMode = false, draftCoordinates = null, onMapClick }: Props) {
+  placeFocusRequest = 0, onPlaceSelect, placementMode = false, draftCoordinates = null, onMapClick }: Props) {
   const validLocations = useMemo(() => locations.filter((item) =>
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))), [locations]);
   const validHistory = useMemo(() => history.filter((item) => item.userId === selectedId &&
@@ -118,6 +131,8 @@ export function LiveMap({ locations, history = [], historyLoading = false, focus
     [Number(item.latitude), Number(item.longitude)]), [validHistory]);
   const selectedLocation = useMemo(() => validLocations.find((item) => item.userId === selectedId) ?? null,
     [validLocations, selectedId]);
+  const selectedPlace = useMemo(() => places.find((item) => item.id === selectedPlaceId) ?? null,
+    [places, selectedPlaceId]);
 
   return (
     <MapContainer center={defaultCenter} zoom={12} zoomControl={false} className="map">
@@ -126,6 +141,7 @@ export function LiveMap({ locations, history = [], historyLoading = false, focus
       <FitInitialLocations locations={validLocations} places={places} />
       <FocusSelectedDriver location={selectedLocation} history={validHistory}
         request={focusRequest} loading={historyLoading} />
+      <FocusSelectedPlace place={selectedPlace} request={placeFocusRequest} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
       {route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.82 }} />}
       {validLocations.map((location) => (

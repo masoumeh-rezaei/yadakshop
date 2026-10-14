@@ -25,12 +25,14 @@ export function Dashboard() {
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<DriverLocation[]>([]);
   const [locationHistory, setLocationHistory] = useState<DriverLocation[]>([]);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
+  const [placeFocusRequest, setPlaceFocusRequest] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>('connecting');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,7 +43,10 @@ export function Dashboard() {
   const [placementMode, setPlacementMode] = useState(false);
   const [draftCoordinates, setDraftCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const selectedIdRef = useRef<number | null>(null);
+  const historyVisibleRef = useRef(false);
+  const historyAbortRef = useRef<AbortController | null>(null);
   selectedIdRef.current = selectedId;
+  historyVisibleRef.current = historyVisible;
 
   const handleError = useCallback((requestError: unknown) => {
     if (requestError instanceof ApiError && requestError.status === 401) { logout(); return; }
@@ -61,29 +66,7 @@ export function Dashboard() {
   }, [token, handleError]);
 
   useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => {
-    if (!token || selectedId === null || view !== 'map') {
-      setLocationHistory([]);
-      setHistoryError('');
-      return;
-    }
-    const controller = new AbortController();
-    setLocationHistory([]);
-    setHistoryLoading(true);
-    setHistoryError('');
-    api.locationHistory(token, selectedId, controller.signal)
-      .then((history) => setLocationHistory((current) => {
-        const merged = new globalThis.Map([...history, ...current].map((item) => [item.id, item]));
-        return [...merged.values()].sort((left, right) =>
-          new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime());
-      }))
-      .catch((requestError) => {
-        if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
-        setHistoryError(requestError instanceof Error ? requestError.message : 'دریافت تاریخچه مسیر ناموفق بود.');
-      })
-      .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
-    return () => controller.abort();
-  }, [token, selectedId, view]);
+  useEffect(() => () => historyAbortRef.current?.abort(), []);
   useEffect(() => {
     if (!token) return;
     const socket = io(API_URL, { auth: { token }, transports: ['websocket', 'polling'], autoConnect: false });
@@ -92,7 +75,7 @@ export function Dashboard() {
     socket.on('connect_error', () => setConnection('disconnected'));
     socket.on('location:update', (location: DriverLocation) => {
       setLocations((current) => [location, ...current.filter((item) => item.userId !== location.userId)]);
-      if (selectedIdRef.current === location.userId) {
+      if (historyVisibleRef.current && selectedIdRef.current === location.userId) {
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
         setLocationHistory((current) => [...current.filter((item) => item.id !== location.id &&
           new Date(item.recordedAt).getTime() >= cutoff), location]);
@@ -117,12 +100,51 @@ export function Dashboard() {
   const selected = locations.find((item) => item.userId === selectedId);
   const selectedPlace = places.find((item) => item.id === selectedPlaceId) ?? null;
   const selectDriver = useCallback((id: number) => {
-    if (id !== selectedId) setHistoryLoading(true);
+    historyAbortRef.current?.abort();
+    setLocationHistory([]);
+    setHistoryVisible(false);
+    setHistoryLoading(false);
+    setHistoryError('');
     setSelectedId(id);
     setMapFocusRequest((current) => current + 1);
-  }, [selectedId]);
+  }, []);
+  const selectPlace = useCallback((id: number) => {
+    setSelectedPlaceId(id);
+    setPlaceFocusRequest((current) => current + 1);
+  }, []);
+  const toggleHistory = useCallback(async () => {
+    if (!token || selectedId === null || historyLoading) return;
+    if (historyVisible) {
+      setHistoryVisible(false);
+      setLocationHistory([]);
+      setHistoryError('');
+      setMapFocusRequest((current) => current + 1);
+      return;
+    }
 
-  const changeView = (next: View) => { setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
+    historyAbortRef.current?.abort();
+    const controller = new AbortController();
+    historyAbortRef.current = controller;
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const history = await api.locationHistory(token, selectedId, controller.signal);
+      if (!history.length) {
+        setHistoryError('در ۲۴ ساعت گذشته مسیری برای این پیک ثبت نشده است.');
+        return;
+      }
+      setLocationHistory(history);
+      setHistoryVisible(true);
+      setMapFocusRequest((current) => current + 1);
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') return;
+      setHistoryError(requestError instanceof Error ? requestError.message : 'دریافت تاریخچه مسیر ناموفق بود.');
+    } finally {
+      if (!controller.signal.aborted) setHistoryLoading(false);
+    }
+  }, [token, selectedId, historyLoading, historyVisible]);
+
+  const changeView = (next: View) => { historyAbortRef.current?.abort(); setHistoryVisible(false); setLocationHistory([]); setHistoryLoading(false); setHistoryError(''); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
   const toggleStatus = async (target: User) => {
     if (!token) return;
     const nextStatus = !(target.isActive === true || target.isActive === 1);
@@ -150,7 +172,7 @@ export function Dashboard() {
   const closePlaceModal = () => { setDraftCoordinates(null); setPlacementMode(false); };
   const savePlace = (saved: SavedPlace) => {
     setPlaces((current) => [...current, saved]);
-    setSelectedPlaceId(saved.id); closePlaceModal();
+    selectPlace(saved.id); closePlaceModal();
   };
 
   return <div className="dashboard-shell">
@@ -174,22 +196,22 @@ export function Dashboard() {
         <section className="stats-grid"><article><span className="stat-icon blue"><Truck /></span><div><small>کل پیک‌ها</small><strong>{drivers.length.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon green"><Activity /></span><div><small>آنلاین</small><strong>{onlineCount.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon amber"><Map /></span><div><small>دارای موقعیت</small><strong>{locations.length.toLocaleString('fa-IR')}</strong></div></article></section>
-        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={locationHistory} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} places={places} selectedPlaceId={selectedPlaceId} onPlaceSelect={setSelectedPlaceId} />
+        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
           <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
           <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
             <div className="driver-list">{visibleDrivers.map((driver) => { const location = locations.find((item) => item.userId === driver.id); return <button key={driver.id} className={`driver-item ${selectedId === driver.id ? 'selected' : ''}`} onClick={() => selectDriver(driver.id)}>
               <span className="avatar">{(driver.fullName || 'پ').slice(0, 1)}</span><span className="driver-info"><b>{driver.fullName || 'بدون نام'}</b><small>{location ? locationTime(location.recordedAt) : 'موقعیتی ثبت نشده'}</small></span><span className={`presence ${location && online(location.recordedAt) ? 'online' : ''}`} /></button>; })}
               {!visibleDrivers.length && <div className="empty-state">پیکی با این مشخصات پیدا نشد.</div>}</div>
-            {selected && <div className="selected-driver"><span>مختصات انتخاب‌شده</span><b dir="ltr">{Number(selected.latitude).toFixed(5)}, {Number(selected.longitude).toFixed(5)}</b><small>دقت تقریبی: {Math.round(Number(selected.accuracy || 0))} متر</small><small className={historyError ? 'history-error' : ''}>{historyLoading ? 'در حال دریافت مسیر ۲۴ ساعت گذشته…' : historyError || `${locationHistory.length.toLocaleString('fa-IR')} نقطه در مسیر ۲۴ ساعت گذشته`}</small></div>}
+            {selected && <div className="selected-driver"><span>مختصات انتخاب‌شده</span><b dir="ltr">{Number(selected.latitude).toFixed(5)}, {Number(selected.longitude).toFixed(5)}</b><small>دقت تقریبی: {Math.round(Number(selected.accuracy || 0))} متر</small>{historyVisible && <small>{locationHistory.length.toLocaleString('fa-IR')} نقطه در مسیر ۲۴ ساعت گذشته</small>}{historyError && <small className="history-error">{historyError}</small>}<button className={`history-toggle-button ${historyVisible ? 'active' : ''}`} disabled={historyLoading} onClick={toggleHistory}>{historyLoading ? <><RefreshCw className="spin" size={14} /> در حال دریافت مسیر…</> : historyVisible ? 'مخفی کردن مسیر' : 'نمایش مسیر ۲۴ ساعت گذشته'}</button></div>}
           </aside></section></> : view === 'places' ?
-        <section className={`map-card places-card ${placementMode ? 'placing' : ''}`}><div className="map-panel"><LiveMap locations={[]} selectedId={null} onSelect={() => undefined} places={visiblePlaces} selectedPlaceId={selectedPlaceId} onPlaceSelect={setSelectedPlaceId} placementMode={placementMode} draftCoordinates={draftCoordinates} onMapClick={(latitude, longitude) => setDraftCoordinates({ latitude, longitude })} />
+        <section className={`map-card places-card ${placementMode ? 'placing' : ''}`}><div className="map-panel"><LiveMap locations={[]} selectedId={null} onSelect={() => undefined} places={visiblePlaces} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} placementMode={placementMode} draftCoordinates={draftCoordinates} onMapClick={(latitude, longitude) => setDraftCoordinates({ latitude, longitude })} />
           {placementMode && !draftCoordinates && <div className="placement-hint"><MousePointer2 size={18} /> محل موردنظر را روی نقشه انتخاب کنید.</div>}</div>
           <aside className="driver-panel places-panel"><div className="panel-heading"><div><h2>مکان‌ها</h2><span>{places.length.toLocaleString('fa-IR')} مورد</span></div><button className="icon-button" onClick={() => loadData()} title="به‌روزرسانی"><RefreshCw size={17} /></button></div>
             <button className={`add-place-button ${placementMode ? 'active' : ''}`} onClick={startPlacement}><Plus size={17} /> افزودن مکان از روی نقشه</button>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام مکان" /></div>
             <div className="driver-list place-list">{visiblePlaces.map((place) => <div key={place.id} className={`place-item ${selectedPlaceId === place.id ? 'selected' : ''}`}>
-              <button className="place-item-main" onClick={() => setSelectedPlaceId(place.id)}><span className="place-avatar"><MapPinned size={17} /></span><span className="driver-info"><b>{place.name}</b><small dir="ltr">{Number(place.latitude).toFixed(5)}, {Number(place.longitude).toFixed(5)}</small></span></button>
+              <button className="place-item-main" onClick={() => selectPlace(place.id)}><span className="place-avatar"><MapPinned size={17} /></span><span className="driver-info"><b>{place.name}</b><small dir="ltr">{Number(place.latitude).toFixed(5)}, {Number(place.longitude).toFixed(5)}</small></span></button>
               <span className="place-actions"><button className="danger" onClick={() => deletePlace(place)} title="حذف"><Trash2 size={15} /></button></span></div>)}
               {!visiblePlaces.length && <div className="empty-state">مکانی با این نام پیدا نشد.</div>}</div>
             {selectedPlace && <div className="selected-driver"><span>مکان انتخاب‌شده</span><b>{selectedPlace.name}</b><small dir="ltr">{Number(selectedPlace.latitude).toFixed(7)}, {Number(selectedPlace.longitude).toFixed(7)}</small></div>}
