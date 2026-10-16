@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import type { DriverLocation, SavedPlace } from '../types';
+import { prepareRouteHistory, type RoutePoint } from '../utils/routeHistory';
 import { HistoryActionButton, type HistoryActionStatus, type HistoryRequestResult } from './HistoryActionButton';
+import { RouteHistoryLayer } from './RouteHistoryLayer';
 
 const defaultCenter: [number, number] = [35.6892, 51.389];
 const SELECTED_LOCATION_ZOOM = 18;
@@ -82,7 +84,7 @@ function FitInitialLocations({ locations, places }: { locations: DriverLocation[
 
 function FocusSelectedDriver({ location, history, request, loading }: {
   location: DriverLocation | null;
-  history: DriverLocation[];
+  history: RoutePoint[];
   request: number;
   loading: boolean;
 }) {
@@ -154,8 +156,7 @@ export function LiveMap({ locations, history = [], historyLoading = false, focus
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)) &&
     Number(item.latitude) >= -90 && Number(item.latitude) <= 90 &&
     Number(item.longitude) >= -180 && Number(item.longitude) <= 180), [history, selectedId]);
-  const route = useMemo<[number, number][]>(() => validHistory.map((item) =>
-    [Number(item.latitude), Number(item.longitude)]), [validHistory]);
+  const route = useMemo(() => prepareRouteHistory(validHistory), [validHistory]);
   const selectedLocation = useMemo(() => validLocations.find((item) => item.userId === selectedId) ?? null,
     [validLocations, selectedId]);
   const selectedPlace = useMemo(() => places.find((item) => item.id === selectedPlaceId) ?? null,
@@ -166,11 +167,11 @@ export function LiveMap({ locations, history = [], historyLoading = false, focus
       <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <FitInitialLocations locations={validLocations} places={places} />
-      <FocusSelectedDriver location={selectedLocation} history={validHistory}
+      <FocusSelectedDriver location={selectedLocation} history={route}
         request={focusRequest} loading={historyLoading} />
       <FocusSelectedPlace place={selectedPlace} request={placeFocusRequest} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
-      {route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.82 }} />}
+      <RouteHistoryLayer points={route} />
       {validLocations.map((location) => (
         <Marker key={location.userId} position={[Number(location.latitude), Number(location.longitude)]}
           icon={driverIcon(location, selectedId === location.userId)}
