@@ -5,6 +5,8 @@ import { api, API_URL, ApiError } from '../api';
 import { useAuth } from '../auth';
 import type { DriverLocation, SavedPlace, User } from '../types';
 import { AddUserModal } from './AddUserModal';
+import { DriverListItem } from './DriverListItem';
+import type { HistoryActionStatus, HistoryRequestResult } from './HistoryActionButton';
 import { LiveMap } from './LiveMap';
 import { PlaceModal } from './PlaceModal';
 
@@ -27,6 +29,7 @@ export function Dashboard() {
   const [locationHistory, setLocationHistory] = useState<DriverLocation[]>([]);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyStatuses, setHistoryStatuses] = useState<Record<number, HistoryActionStatus>>({});
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
@@ -44,6 +47,7 @@ export function Dashboard() {
   const selectedIdRef = useRef<number | null>(null);
   const historyVisibleRef = useRef(false);
   const historyAbortRef = useRef<AbortController | null>(null);
+  const historyRequestIdRef = useRef(0);
   selectedIdRef.current = selectedId;
   historyVisibleRef.current = historyVisible;
 
@@ -90,51 +94,76 @@ export function Dashboard() {
     const phrase = search.trim().toLowerCase();
     return phrase ? drivers.filter((item) => `${item.fullName || ''} ${item.phone}`.toLowerCase().includes(phrase)) : drivers;
   }, [drivers, search]);
-  const filteredLocations = useMemo(() => locations.filter((location) => visibleDrivers.some((driver) => driver.id === location.userId)), [locations, visibleDrivers]);
+  const visibleDriverIds = useMemo(() => new Set(visibleDrivers.map((driver) => driver.id)), [visibleDrivers]);
+  const filteredLocations = useMemo(() => locations.filter((location) => visibleDriverIds.has(location.userId)), [locations, visibleDriverIds]);
+  const locationsByDriverId = useMemo(() => new globalThis.Map(locations.map((location) =>
+    [location.userId, location] as const)), [locations]);
   const visiblePlaces = useMemo(() => {
     const phrase = search.trim().toLowerCase();
     return phrase ? places.filter((item) => item.name.toLowerCase().includes(phrase)) : places;
   }, [places, search]);
   const onlineCount = locations.filter((item) => online(item.recordedAt)).length;
   const selectedPlace = places.find((item) => item.id === selectedPlaceId) ?? null;
-  const selectDriver = useCallback((id: number) => {
+  const cancelHistoryRequest = useCallback(() => {
+    historyRequestIdRef.current += 1;
     historyAbortRef.current?.abort();
+    historyAbortRef.current = null;
+    setHistoryLoading(false);
+    setHistoryStatuses((current) => Object.fromEntries(Object.entries(current)
+      .map(([id, status]) => [id, status === 'loading' ? 'idle' : status])));
+  }, []);
+  const selectDriver = useCallback((id: number) => {
+    cancelHistoryRequest();
     setLocationHistory([]);
     setHistoryVisible(false);
-    setHistoryLoading(false);
     setSelectedId(id);
     setMapFocusRequest((current) => current + 1);
-  }, []);
+  }, [cancelHistoryRequest]);
   const selectPlace = useCallback((id: number) => {
     setSelectedPlaceId(id);
     setPlaceFocusRequest((current) => current + 1);
   }, []);
-  const fetchHistory = useCallback(async (driverId: number) => {
+  const fetchHistory = useCallback(async (driverId: number): Promise<HistoryRequestResult> => {
     if (!token) return 'error' as const;
-    historyAbortRef.current?.abort();
+    cancelHistoryRequest();
+    const requestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = requestId;
     const controller = new AbortController();
     historyAbortRef.current = controller;
+    let didTimeout = false;
+    const timeout = window.setTimeout(() => { didTimeout = true; controller.abort(); }, 15_000);
     setSelectedId(driverId);
     setLocationHistory([]);
     setHistoryVisible(false);
     setHistoryLoading(true);
+    setHistoryStatuses((current) => ({ ...current, [driverId]: 'loading' }));
     try {
       const history = await api.locationHistory(token, driverId, controller.signal);
+      if (requestId !== historyRequestIdRef.current) return 'cancelled';
       if (!history.length) {
-        return 'empty' as const;
+        setHistoryStatuses((current) => ({ ...current, [driverId]: 'empty' }));
+        return 'empty';
       }
       setLocationHistory(history);
       setHistoryVisible(true);
       setMapFocusRequest((current) => current + 1);
-      return 'success' as const;
+      setHistoryStatuses((current) => ({ ...current, [driverId]: 'idle' }));
+      return 'success';
     } catch (requestError) {
-      if (requestError instanceof DOMException && requestError.name === 'AbortError') return 'error' as const;
-      return 'error' as const;
+      if (requestId !== historyRequestIdRef.current) return 'cancelled';
+      const status: HistoryActionStatus = didTimeout ? 'error' :
+        requestError instanceof DOMException && requestError.name === 'AbortError' ? 'idle' : 'error';
+      setHistoryStatuses((current) => ({ ...current, [driverId]: status }));
+      return status === 'error' ? 'error' : 'cancelled';
     } finally {
-      if (!controller.signal.aborted) setHistoryLoading(false);
+      window.clearTimeout(timeout);
+      if (requestId === historyRequestIdRef.current) {
+        historyAbortRef.current = null;
+        setHistoryLoading(false);
+      }
     }
-  }, [token]);
-  const changeView = (next: View) => { historyAbortRef.current?.abort(); setHistoryVisible(false); setLocationHistory([]); setHistoryLoading(false); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
+  }, [token, cancelHistoryRequest]);
+  const changeView = (next: View) => { cancelHistoryRequest(); setHistoryVisible(false); setLocationHistory([]); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
   const toggleStatus = async (target: User) => {
     if (!token) return;
     const nextStatus = !(target.isActive === true || target.isActive === 1);
@@ -186,12 +215,14 @@ export function Dashboard() {
         <section className="stats-grid"><article><span className="stat-icon blue"><Truck /></span><div><small>کل پیک‌ها</small><strong>{drivers.length.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon green"><Activity /></span><div><small>آنلاین</small><strong>{onlineCount.toLocaleString('fa-IR')}</strong></div></article>
           <article><span className="stat-icon amber"><Map /></span><div><small>دارای موقعیت</small><strong>{locations.length.toLocaleString('fa-IR')}</strong></div></article></section>
-        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} onHistoryRequest={fetchHistory} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
+        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} onHistoryRequest={fetchHistory} historyStatuses={historyStatuses} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
           <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
           <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
             <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
-            <div className="driver-list">{visibleDrivers.map((driver) => { const location = locations.find((item) => item.userId === driver.id); return <button key={driver.id} className={`driver-item ${selectedId === driver.id ? 'selected' : ''}`} onClick={() => selectDriver(driver.id)}>
-              <span className="avatar">{(driver.fullName || 'پ').slice(0, 1)}</span><span className="driver-info"><b>{driver.fullName || 'بدون نام'}</b><small>{location ? locationTime(location.recordedAt) : 'موقعیتی ثبت نشده'}</small></span><span className={`presence ${location && online(location.recordedAt) ? 'online' : ''}`} /></button>; })}
+            <div className="driver-list">{visibleDrivers.map((driver) => <DriverListItem key={driver.id} driver={driver}
+              location={locationsByDriverId.get(driver.id)} selected={selectedId === driver.id}
+              historyStatus={historyStatuses[driver.id] ?? 'idle'} onSelect={selectDriver}
+              onHistoryRequest={(id) => { void fetchHistory(id); }} formatLocationTime={locationTime} isOnline={online} />)}
               {!visibleDrivers.length && <div className="empty-state">پیکی با این مشخصات پیدا نشد.</div>}</div>
           </aside></section></> : view === 'places' ?
         <section className={`map-card places-card ${placementMode ? 'placing' : ''}`}><div className="map-panel"><LiveMap locations={[]} selectedId={null} onSelect={() => undefined} places={visiblePlaces} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} placementMode={placementMode} draftCoordinates={draftCoordinates} onMapClick={(latitude, longitude) => setDraftCoordinates({ latitude, longitude })} />
