@@ -1,15 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import type { DriverLocation, SavedPlace } from '../types';
+import { HistoryActionButton, type HistoryActionStatus, type HistoryRequestResult } from './HistoryActionButton';
 
 const defaultCenter: [number, number] = [35.6892, 51.389];
+const SELECTED_LOCATION_ZOOM = 18;
+const HISTORY_MAX_ZOOM = 16;
 
-const markerIcon = (online: boolean, selected: boolean) => L.divIcon({
-  className: 'driver-marker-wrapper',
-  html: `<div class="driver-marker ${online ? 'online' : 'offline'} ${selected ? 'selected' : ''}"><span></span></div>`,
-  iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -17],
-});
+const driverIcon = (location: DriverLocation, selected: boolean) => {
+  const displayName = escapeHtml(location.fullName?.trim() || location.phone || 'پیک بدون نام');
+  return L.divIcon({
+    className: 'driver-marker-wrapper',
+    html: `<div class="driver-marker-card ${isOnline(location.recordedAt) ? 'online' : 'offline'} ${selected ? 'selected' : ''}">
+      <div class="driver-marker-label" title="${displayName}"><span>${displayName}</span></div>
+      <div class="driver-marker-pin"><span></span></div>
+      <div class="driver-marker-shadow"></div>
+    </div>`,
+    iconSize: [150, 62], iconAnchor: [75, 58], popupAnchor: [0, -56],
+  });
+};
 
 const placeColors = ['#7c3aed', '#db2777', '#2563eb', '#0891b2', '#059669', '#ca8a04', '#ea580c', '#dc2626', '#4f46e5'];
 
@@ -40,32 +50,19 @@ const draftIcon = L.divIcon({
 
 const isOnline = (date: string) => Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
 
-type HistoryRequestResult = 'success' | 'empty' | 'error';
-
-function DriverPopupHistory({ driverId, onRequest }: {
+function DriverPopupHistory({ driverId, onRequest, status }: {
   driverId: number;
   onRequest: (id: number) => Promise<HistoryRequestResult>;
+  status: HistoryActionStatus;
 }) {
   const map = useMap();
-  const [status, setStatus] = useState<'idle' | 'loading' | 'empty' | 'error'>('idle');
-
-  const requestHistory = async () => {
-    if (status === 'loading') return;
-    setStatus('loading');
+  const requestHistory = async (status: HistoryActionStatus) => {
+    if (status === 'loading' || status === 'empty') return;
     const result = await onRequest(driverId);
-    if (result === 'success') {
-      map.closePopup();
-      return;
-    }
-    setStatus(result);
+    if (result === 'success') map.closePopup();
   };
 
-  return <button type="button" className={`map-popup-history-button ${status}`}
-    disabled={status === 'loading' || status === 'empty'} onClick={() => { void requestHistory(); }}>
-    {status === 'loading' ? 'در حال بررسی تاریخچه…' :
-      status === 'empty' ? 'برای ۲۴ ساعت گذشته تاریخچه‌ای وجود ندارد' :
-        status === 'error' ? 'دریافت تاریخچه ناموفق بود؛ تلاش مجدد' : 'نمایش تاریخچه کاربر'}
-  </button>;
+  return <HistoryActionButton status={status} onClick={() => { void requestHistory(status); }} />;
 }
 
 function FitInitialLocations({ locations, places }: { locations: DriverLocation[]; places: SavedPlace[] }) {
@@ -100,13 +97,13 @@ function FocusSelectedDriver({ location, history, request, loading }: {
     const bounds = L.latLngBounds(points.map((item) => [Number(item.latitude), Number(item.longitude)]));
     map.stop();
     if (points.length === 1 || bounds.getNorthEast().equals(bounds.getSouthWest())) {
-      map.setView(bounds.getCenter(), 16, { animate: false });
+      map.setView(bounds.getCenter(), SELECTED_LOCATION_ZOOM, { animate: false });
       return;
     }
     map.fitBounds(bounds, {
       paddingTopLeft: [48, 48],
       paddingBottomRight: [48, 48],
-      maxZoom: 16,
+      maxZoom: HISTORY_MAX_ZOOM,
       animate: false,
     });
   }, [request, loading, location, history, map]);
@@ -120,7 +117,7 @@ function FocusSelectedPlace({ place, request }: { place: SavedPlace | null; requ
     if (!place || !request || handledRequest.current === request) return;
     handledRequest.current = request;
     map.stop();
-    map.flyTo([Number(place.latitude), Number(place.longitude)], 16, { duration: 0.65 });
+    map.setView([Number(place.latitude), Number(place.longitude)], SELECTED_LOCATION_ZOOM, { animate: false });
   }, [place, request, map]);
   return null;
 }
@@ -138,6 +135,7 @@ interface Props {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onHistoryRequest?: (id: number) => Promise<HistoryRequestResult>;
+  historyStatuses?: Record<number, HistoryActionStatus>;
   places?: SavedPlace[];
   selectedPlaceId?: number | null;
   placeFocusRequest?: number;
@@ -148,7 +146,7 @@ interface Props {
 }
 
 export function LiveMap({ locations, history = [], historyLoading = false, focusRequest = 0,
-  selectedId, onSelect, onHistoryRequest, places = [], selectedPlaceId = null,
+  selectedId, onSelect, onHistoryRequest, historyStatuses = {}, places = [], selectedPlaceId = null,
   placeFocusRequest = 0, onPlaceSelect, placementMode = false, draftCoordinates = null, onMapClick }: Props) {
   const validLocations = useMemo(() => locations.filter((item) =>
     Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude))), [locations]);
@@ -175,13 +173,14 @@ export function LiveMap({ locations, history = [], historyLoading = false, focus
       {route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.82 }} />}
       {validLocations.map((location) => (
         <Marker key={location.userId} position={[Number(location.latitude), Number(location.longitude)]}
-          icon={markerIcon(isOnline(location.recordedAt), selectedId === location.userId)}
+          icon={driverIcon(location, selectedId === location.userId)}
           eventHandlers={{ click: () => onSelect(location.userId) }}>
           <Popup autoPan={false}>
             <strong>{location.fullName || 'پیک بدون نام'}</strong><br />
             <span>{location.phone}</span><br />
             <small>آخرین ارسال: {new Date(location.recordedAt).toLocaleTimeString('fa-IR')}</small>
-            {onHistoryRequest && <DriverPopupHistory driverId={location.userId} onRequest={onHistoryRequest} />}
+            {onHistoryRequest && <DriverPopupHistory driverId={location.userId} onRequest={onHistoryRequest}
+              status={historyStatuses[location.userId] ?? 'idle'} />}
           </Popup>
         </Marker>
       ))}
