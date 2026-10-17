@@ -23,12 +23,12 @@ const MAX_STAY_RADIUS_METERS = 160;
 const REQUIRED_STAY_INLIER_RATIO = 0.8;
 const MAX_RENDERED_POINTS = 250;
 const TIMELINE_COLORS = [
-  [124, 58, 237],
+  [191, 219, 254],
+  [147, 197, 253],
+  [96, 165, 250],
+  [59, 130, 246],
   [37, 99, 235],
-  [8, 145, 178],
-  [22, 163, 74],
-  [245, 158, 11],
-  [234, 88, 12],
+  [29, 78, 216],
 ] as const;
 
 const distanceBetween = (first: RoutePoint, second: RoutePoint) => {
