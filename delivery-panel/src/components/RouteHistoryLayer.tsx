@@ -15,9 +15,9 @@ export function RouteHistoryLayer({ points }: Props) {
 
   return <>
     <Polyline positions={route} interactive={false} smoothFactor={1.5}
-      pathOptions={{ color: '#ffffff', weight: 7, opacity: 0.7, lineCap: 'round', lineJoin: 'round' }} />
+      pathOptions={{ color: '#ffffff', weight: 9, opacity: 0.92, lineCap: 'round', lineJoin: 'round' }} />
     {segments.map((segment, index) => <Polyline key={`${index}-${segment.color}`}
       positions={segment.positions} interactive={false} smoothFactor={1.5}
-      pathOptions={{ color: segment.color, weight: 5, opacity: segment.opacity, lineCap: 'round', lineJoin: 'round' }} />)}
+      pathOptions={{ color: segment.color, weight: 6, opacity: segment.opacity, lineCap: 'round', lineJoin: 'round' }} />)}
   </>;
 }

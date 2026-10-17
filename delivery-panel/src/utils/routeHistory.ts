@@ -22,8 +22,14 @@ const MIN_STAY_RADIUS_METERS = 80;
 const MAX_STAY_RADIUS_METERS = 160;
 const REQUIRED_STAY_INLIER_RATIO = 0.8;
 const MAX_RENDERED_POINTS = 250;
-const GRADIENT_START = [191, 219, 254] as const;
-const GRADIENT_END = [29, 78, 216] as const;
+const TIMELINE_COLORS = [
+  [124, 58, 237],
+  [37, 99, 235],
+  [8, 145, 178],
+  [22, 163, 74],
+  [245, 158, 11],
+  [234, 88, 12],
+] as const;
 
 const distanceBetween = (first: RoutePoint, second: RoutePoint) => {
   const toRadians = Math.PI / 180;
@@ -229,8 +235,13 @@ export function prepareRouteHistory(history: DriverLocation[]): RoutePoint[] {
 }
 
 const interpolateColor = (progress: number) => {
-  const channels = GRADIENT_START.map((start, index) =>
-    Math.round(start + (GRADIENT_END[index] - start) * progress));
+  const scaledProgress = Math.max(0, Math.min(1, progress)) * (TIMELINE_COLORS.length - 1);
+  const startIndex = Math.min(Math.floor(scaledProgress), TIMELINE_COLORS.length - 2);
+  const localProgress = scaledProgress - startIndex;
+  const startColor = TIMELINE_COLORS[startIndex];
+  const endColor = TIMELINE_COLORS[startIndex + 1];
+  const channels = startColor.map((start, index) =>
+    Math.round(start + (endColor[index] - start) * localProgress));
   return `rgb(${channels.join(', ')})`;
 };
 
@@ -244,7 +255,7 @@ export function buildTimelineSegments(points: RoutePoint[]): RouteSegment[] {
     return {
       positions: [[previous.latitude, previous.longitude], [point.latitude, point.longitude]],
       color: interpolateColor(progress),
-      opacity: 0.38 + progress * 0.57,
+      opacity: 0.9,
     };
   });
 }
