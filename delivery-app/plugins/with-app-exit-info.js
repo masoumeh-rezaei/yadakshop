@@ -79,6 +79,18 @@ class AppExitInfoPackage : ReactPackage {
 }
 `;
 
+const proguardRules = `
+# Keep the app's manually registered React Native modules and background
+# tracking components when R8 is enabled for release builds.
+-keep class com.yadakshop.deliveryapp.AppExitInfoModule { *; }
+-keep class com.yadakshop.deliveryapp.AppExitInfoPackage { *; }
+-keep class com.yadakshop.deliveryapp.DeliveryTrackingModule { *; }
+-keep class com.yadakshop.deliveryapp.DeliveryTrackingPackage { *; }
+-keep class com.yadakshop.deliveryapp.DeliveryLocationService { *; }
+-keep class com.yadakshop.deliveryapp.TrackingBootReceiver { *; }
+-keep class com.yadakshop.deliveryapp.TrackingStore { *; }
+`;
+
 const withAppExitInfo = (config) => {
   config = withMainApplication(config, (modConfig) => {
     if (!modConfig.modResults.contents.includes('add(DeliveryTrackingPackage())')) {
@@ -153,9 +165,14 @@ const withAppExitInfo = (config) => {
     await fs.promises.mkdir(javaDirectory, { recursive: true });
     const trackerSourceDirectory = path.join(__dirname, 'android-tracker');
     const trackerSources = await fs.promises.readdir(trackerSourceDirectory);
+    const proguardPath = path.join(modConfig.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
+    const currentProguardRules = await fs.promises.readFile(proguardPath, 'utf8');
     await Promise.all([
       fs.promises.writeFile(path.join(javaDirectory, 'AppExitInfoModule.kt'), moduleSource),
       fs.promises.writeFile(path.join(javaDirectory, 'AppExitInfoPackage.kt'), packageSource),
+      currentProguardRules.includes('com.yadakshop.deliveryapp.DeliveryTrackingModule')
+        ? Promise.resolve()
+        : fs.promises.appendFile(proguardPath, proguardRules),
       ...trackerSources
         .filter((fileName) => fileName.endsWith('.kt'))
         .map((fileName) => fs.promises.copyFile(
