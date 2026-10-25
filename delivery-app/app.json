@@ -35,6 +35,7 @@
     },
     "plugins": [
       "./plugins/with-app-exit-info",
+      "./plugins/with-android-apk-splits",
       "expo-router",
       [
         "expo-location",
@@ -63,6 +64,10 @@
         {
           "android": {
             "usesCleartextTraffic": true,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableBundleCompression": true,
+            "useLegacyPackaging": true,
             "buildArchs": [
               "armeabi-v7a",
               "arm64-v8a"
