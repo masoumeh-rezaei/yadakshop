@@ -21,6 +21,11 @@ export interface DriverLocation {
   recordedAt: string;
 }
 
+export interface HistoryDay {
+  /** Gregorian day key in Asia/Tehran; displayed with the Persian calendar. */
+  date: string;
+}
+
 export interface SavedPlace {
   id: number;
   name: string;
