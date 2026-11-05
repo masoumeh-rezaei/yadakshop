@@ -163,6 +163,38 @@ function MapClickHandler({
   return null;
 }
 
+function DismissPopupOnOutsidePress() {
+  const map = useMap();
+  useEffect(() => {
+    let activePopup: L.Popup | null = null;
+    const onOutsidePress = (event: PointerEvent) => {
+      const popup = activePopup;
+      const element = popup?.getElement();
+      if (popup && element && event.target instanceof Node && !element.contains(event.target)) {
+        map.closePopup(popup);
+      }
+    };
+    const onOpen = (event: L.PopupEvent) => {
+      activePopup = event.popup;
+      // Capture also reaches clicks that Leaflet or controls stop from bubbling.
+      document.addEventListener('pointerdown', onOutsidePress, true);
+    };
+    const onClose = (event: L.PopupEvent) => {
+      if (event.popup !== activePopup) return;
+      activePopup = null;
+      document.removeEventListener('pointerdown', onOutsidePress, true);
+    };
+    map.on('popupopen', onOpen);
+    map.on('popupclose', onClose);
+    return () => {
+      document.removeEventListener('pointerdown', onOutsidePress, true);
+      map.off('popupopen', onOpen);
+      map.off('popupclose', onClose);
+    };
+  }, [map]);
+  return null;
+}
+
 function CourierMarker({ location, selected, onSelect, onHistoryRequest, status, assignments }: {
   location: DriverLocation; selected: boolean; onSelect: (id: number) => void;
   onHistoryRequest?: (id: number) => Promise<HistoryRequestResult>;
@@ -308,6 +340,7 @@ export function LiveMap({
       />
       <FocusSelectedPlace place={selectedPlace} request={placeFocusRequest} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
+      <DismissPopupOnOutsidePress />
       <RouteHistoryLayer points={route} />
       {validLocations.map((location) => <CourierMarker key={location.userId} location={location}
         selected={selectedId === location.userId} onSelect={onMarkerSelect || onSelect}
