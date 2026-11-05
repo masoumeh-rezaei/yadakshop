@@ -230,7 +230,6 @@ export function Dashboard() {
     setSelectedId(null);
     history.close();
   }, [history.close]);
-  // Range edits update the route without moving the camera or surrounding pins.
   const changeView = (next: View) => {
     history.close();
     setMapFocusRequest(0);
