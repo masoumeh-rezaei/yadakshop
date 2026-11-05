@@ -27,7 +27,7 @@ export function TasksPage(props: Props) {
       <button type="button" className="tasks-refresh" onClick={props.onRefresh} aria-label="به‌روزرسانی وظایف"><RefreshCw size={17} /></button></div>
     {props.error && <div className="task-page-error" role="alert">{props.error}<button type="button" onClick={props.onRefresh}>تلاش مجدد</button></div>}
     {props.loading ? <div className="tasks-empty" role="status"><LoaderCircle className="animate-spin" /> در حال دریافت وظایف…</div>
-      : !visible.length ? <div className="tasks-empty"><ClipboardList size={35} /><b>وظیفه‌ای برای نمایش نیست</b><p>روی پین یک مکان یا پیک کلیک کنید و انتخاب‌های موردنظر را ثبت کنید.</p></div>
+      : props.error ? null : !visible.length ? <div className="tasks-empty"><ClipboardList size={35} /><b>وظیفه‌ای برای نمایش نیست</b><p>روی پین یک مکان یا پیک کلیک کنید و انتخاب‌های موردنظر را ثبت کنید.</p></div>
       : <div className="tasks-grid">{visible.map((task) => {
         const done = task.status === 'completed';
         const busy = props.pending.has(assignmentKey(task.driverId, task.placeId));

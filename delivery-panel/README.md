@@ -68,3 +68,10 @@ The task map page has no task API access or token; it accepts coordinate/name
 data from the authenticated app, validates it, and inserts names as text.
 Tasks require the real database migration documented in
 [`TASKS.md`](../delivery-backend/TASKS.md); build output alone cannot persist them.
+
+The panel can be published ahead of the task service. A 404 or 503 from the task
+API shows a Persian availability message and disables assignment writes while
+keeping the map and account/place management usable. The task list does not
+present an unavailable service as an empty result. Periodic refresh and the
+retry action enable assignments once the service is ready. Publish both HTML
+entry points and all assets; no schema change is needed for this panel release.

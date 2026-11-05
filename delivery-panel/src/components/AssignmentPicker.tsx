@@ -38,7 +38,7 @@ export function AssignmentPicker({ target, controls }: { target: Target; control
         const checked = task?.status === 'pending';
         const busy = controls.pending.has(key);
         return <label key={choice.id} className={`assignment-option ${checked ? 'checked' : ''} ${busy ? 'busy' : ''}`}>
-          <input type="checkbox" checked={checked} disabled={busy || (!choice.active && !checked)} onChange={(event) => controls.onAssign(driverId, placeId, event.target.checked)} />
+          <input type="checkbox" checked={checked} disabled={Boolean(controls.error) || busy || (!choice.active && !checked)} onChange={(event) => controls.onAssign(driverId, placeId, event.target.checked)} />
           <span className="assignment-option-icon"><Icon size={16} /></span>
           <span className="assignment-option-name"><b>{choice.name}</b><small>{!choice.active ? 'حساب غیرفعال' : task?.status === 'completed' ? 'قبلاً انجام‌شده؛ قابل تخصیص مجدد' : checked ? 'وظیفهٔ فعال' : isDriver ? 'مکان ذخیره‌شده' : 'پیک'}</small></span>
           {busy ? <LoaderCircle size={15} className="animate-spin" /> : checked && <Check size={15} className="assignment-check" />}

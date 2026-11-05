@@ -17,7 +17,10 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
 
   const reportError = useCallback((cause: unknown) => {
     if (cause instanceof ApiError && cause.status === 401) unauthorized.current();
-    if (mounted.current) setError(cause instanceof Error ? cause.message : 'ارتباط با بخش وظایف ناموفق بود.');
+    const unavailable = cause instanceof ApiError && (cause.status === 404 || cause.status === 503);
+    if (mounted.current) setError(unavailable
+      ? 'نمایش جدید آماده است؛ ثبت و دریافت وظایف پس از آماده‌شدن سرویس وظایف فعال می‌شود.'
+      : cause instanceof Error ? cause.message : 'ارتباط با بخش وظایف ناموفق بود.');
   }, []);
 
   const refresh = useCallback(async () => {

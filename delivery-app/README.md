@@ -36,6 +36,24 @@ Type checking: `npx tsc --noEmit`. Android JS/asset validation:
 `npx expo export --platform android`. A bundle export is not an APK or an
 on-device test. Full API and migration notes: `delivery-backend/TASKS.md`.
 
+### EAS upload returns 403 on Windows
+
+If login and remote credentials succeed but uploading metadata or the project
+archive fails, check the connection to Google Cloud Storage. EAS CLI uses the
+`https_proxy` environment variable rather than automatically reading Windows
+proxy settings. When an active local HTTP proxy is required, set its actual
+address in the same PowerShell window before building. For example, only if
+your proxy listens on port 10809:
+
+```powershell
+$env:https_proxy = "http://127.0.0.1:10809"
+npx eas-cli@latest build --platform android --profile preview
+```
+
+This setting lasts only for that PowerShell process. Keep the proxy running;
+remove the variable with `Remove-Item Env:https_proxy` when using a direct
+connection again. An upload-only failure does not require a new signing key.
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
