@@ -19,6 +19,7 @@ import {
 } from "./HistoryActionButton";
 import { RouteHistoryLayer } from "./RouteHistoryLayer";
 import { prefersReducedMotion } from "../utils/mapMotion";
+import { AssignmentPicker, type AssignmentControls } from "./AssignmentPicker";
 
 const defaultCenter: [number, number] = [35.6892, 51.389];
 const SELECTED_LOCATION_ZOOM = 18;
@@ -105,7 +106,10 @@ function FocusSelectedDriver({
       points.length === 1 ||
       bounds.getNorthEast().equals(bounds.getSouthWest())
     ) {
-      map.flyTo(bounds.getCenter(), Math.max(map.getZoom(), SELECTED_LOCATION_ZOOM), {
+      const center = bounds.getCenter();
+      const zoom = Math.max(map.getZoom(), SELECTED_LOCATION_ZOOM);
+      if (map.distance(map.getCenter(), center) < 1 && Math.abs(map.getZoom() - zoom) < 0.01) return;
+      map.flyTo(center, zoom, {
         animate,
         duration: 0.85,
       });
@@ -159,6 +163,45 @@ function MapClickHandler({
   return null;
 }
 
+function CourierMarker({ location, selected, onSelect, onHistoryRequest, status, assignments }: {
+  location: DriverLocation; selected: boolean; onSelect: (id: number) => void;
+  onHistoryRequest?: (id: number) => Promise<HistoryRequestResult>;
+  status: HistoryActionStatus; assignments?: AssignmentControls;
+}) {
+  const map = useMap();
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  const isOnline = Date.now() - Date.parse(location.recordedAt) < 120_000;
+  const icon = useMemo(() => driverIcon(location, selected), [location.fullName, location.phone, selected, isOnline]);
+  const position = useMemo<[number, number]>(() => [latitude, longitude], [latitude, longitude]);
+  return <Marker position={position} icon={icon} zIndexOffset={selected ? SELECTED_MARKER_Z_INDEX : 0}
+    title={location.fullName || 'پیک بدون نام'} alt={location.fullName || 'پیک بدون نام'} autoPanOnFocus={false}
+    eventHandlers={{ click: () => { map.stop(); onSelect(location.userId); } }}>
+    <Popup autoPan keepInView={false} autoPanPadding={[18, 18]} className="assignment-popup" minWidth={260} maxWidth={320}>
+      <div className="assignment-target"><strong>{location.fullName || 'پیک بدون نام'}</strong><small>{location.phone}</small></div>
+      {assignments && <AssignmentPicker target={{ kind: 'driver', id: location.userId }} controls={assignments} />}
+      {onHistoryRequest && <DriverPopupHistory driverId={location.userId} onRequest={onHistoryRequest} status={status} />}
+    </Popup>
+  </Marker>;
+}
+
+function SavedPlaceMarker({ place, selected, onSelect, assignments }: {
+  place: SavedPlace; selected: boolean; onSelect?: (id: number) => void; assignments?: AssignmentControls;
+}) {
+  const map = useMap();
+  const icon = useMemo(() => placeIcon(place, selected), [place.id, place.name, selected]);
+  const latitude = Number(place.latitude);
+  const longitude = Number(place.longitude);
+  const position = useMemo<[number, number]>(() => [latitude, longitude], [latitude, longitude]);
+  return <Marker position={position} icon={icon} autoPanOnFocus={false}
+    zIndexOffset={selected ? SELECTED_MARKER_Z_INDEX : 0} eventHandlers={{ click: () => { map.stop(); onSelect?.(place.id); } }}>
+    <Popup autoPan keepInView={false} autoPanPadding={[18, 18]} className="assignment-popup" minWidth={260} maxWidth={320}>
+      <div className="assignment-target"><strong>{place.name}</strong><small>مکان ذخیره‌شده</small></div>
+      {assignments && <AssignmentPicker target={{ kind: 'place', id: place.id }} controls={assignments} />}
+    </Popup>
+  </Marker>;
+}
+
 interface Props {
   locations: DriverLocation[];
   history?: DriverLocation[];
@@ -167,6 +210,9 @@ interface Props {
   focusTarget?: "driver" | "history";
   selectedId: number | null;
   onSelect: (id: number) => void;
+  onMarkerSelect?: (id: number) => void;
+  onPlaceMarkerSelect?: (id: number) => void;
+  assignments?: AssignmentControls;
   onHistoryRequest?: (id: number) => Promise<HistoryRequestResult>;
   historyStatuses?: Record<number, HistoryActionStatus>;
   places?: SavedPlace[];
@@ -186,6 +232,9 @@ export function LiveMap({
   focusTarget = "driver",
   selectedId,
   onSelect,
+  onMarkerSelect,
+  onPlaceMarkerSelect,
+  assignments,
   onHistoryRequest,
   historyStatuses = {},
   places = [],
@@ -260,48 +309,11 @@ export function LiveMap({
       <FocusSelectedPlace place={selectedPlace} request={placeFocusRequest} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
       <RouteHistoryLayer points={route} />
-      {validLocations.map((location) => (
-        <Marker
-          key={location.userId}
-          position={[Number(location.latitude), Number(location.longitude)]}
-          icon={driverIcon(location, selectedId === location.userId)}
-          zIndexOffset={selectedId === location.userId ? SELECTED_MARKER_Z_INDEX : 0}
-          title={location.fullName || "پیک بدون نام"}
-          alt={location.fullName || "پیک بدون نام"}
-          eventHandlers={{ click: () => onSelect(location.userId) }}
-        >
-          <Popup autoPan={false}>
-            <strong>{location.fullName || "پیک بدون نام"}</strong>
-            <br />
-            <span>{location.phone}</span>
-            <br />
-            <small>
-              آخرین ارسال:{" "}
-              {new Date(location.recordedAt).toLocaleTimeString("fa-IR")}
-            </small>
-            {onHistoryRequest && (
-              <DriverPopupHistory
-                driverId={location.userId}
-                onRequest={onHistoryRequest}
-                status={historyStatuses[location.userId] ?? "idle"}
-              />
-            )}
-          </Popup>
-        </Marker>
-      ))}
-      {places.map((place) => (
-        <Marker
-          key={`place-${place.id}`}
-          position={[Number(place.latitude), Number(place.longitude)]}
-          icon={placeIcon(place, selectedPlaceId === place.id)}
-          zIndexOffset={selectedPlaceId === place.id ? SELECTED_MARKER_Z_INDEX : 0}
-          eventHandlers={{ click: () => onPlaceSelect?.(place.id) }}
-        >
-          <Popup>
-            <strong>{place.name}</strong>
-          </Popup>
-        </Marker>
-      ))}
+      {validLocations.map((location) => <CourierMarker key={location.userId} location={location}
+        selected={selectedId === location.userId} onSelect={onMarkerSelect || onSelect}
+        onHistoryRequest={onHistoryRequest} status={historyStatuses[location.userId] ?? "idle"} assignments={assignments} />)}
+      {places.map((place) => <SavedPlaceMarker key={place.id} place={place}
+        selected={selectedPlaceId === place.id} onSelect={onPlaceMarkerSelect || onPlaceSelect} assignments={assignments} />)}
       {draftCoordinates && (
         <Marker
           position={[draftCoordinates.latitude, draftCoordinates.longitude]}
