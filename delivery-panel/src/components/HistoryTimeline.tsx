@@ -1,5 +1,6 @@
 import { CalendarDays, Check, Clock3, History, LoaderCircle, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { scrollToMapSection } from '../utils/mapMotion';
 import type { HistoryDay } from '../types';
 import { formatHistoryDay, formatHistoryTime, historyDayDate, type TimeRange } from '../utils/historyTime';
 
@@ -33,7 +34,7 @@ export function HistoryTimeline(props: Props) {
   const { days, selectedDay, range, rangeActive, loading, dayLoading, error, dayError } = props;
   const panelRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    panelRef.current?.scrollIntoView({ block: 'nearest' });
+    scrollToMapSection(panelRef.current);
   }, [props.driverName, selectedDay]);
   const startPercent = ((range[0] - 720) / 720) * 100;
   const endPercent = ((range[1] - 720) / 720) * 100;

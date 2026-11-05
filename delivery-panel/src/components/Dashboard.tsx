@@ -1,6 +1,5 @@
 import { Input } from "./ui/FormControls";
 import { StatCard } from "./ui/StatCard";
-import { Avatar } from "./ui/Avatar";
 import { Button } from "./ui/Button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -17,7 +16,6 @@ import {
   Search,
   Trash2,
   Truck,
-  UserCog,
   Users,
   Wifi,
   WifiOff,
@@ -33,6 +31,8 @@ import { HistoryTimeline } from "./HistoryTimeline";
 import { useDriverHistory } from "../hooks/useDriverHistory";
 import { LiveMap } from "./LiveMap";
 import { PlaceModal } from "./PlaceModal";
+import { MapLegend } from "./MapLegend";
+import { UserManagementPanel } from "./UserManagementPanel";
 
 type View = "map" | "places" | "users";
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -63,6 +63,7 @@ export function Dashboard() {
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
+  const [mapFocusTarget, setMapFocusTarget] = useState<"driver" | "history">("driver");
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
   const [placeFocusRequest, setPlaceFocusRequest] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -71,6 +72,7 @@ export function Dashboard() {
   const [search, setSearch] = useState("");
   const [showAddUser, setShowAddUser] = useState(false);
   const [deletingUserIds, setDeletingUserIds] = useState<number[]>([]);
+  const [updatingUserIds, setUpdatingUserIds] = useState<number[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [placementMode, setPlacementMode] = useState(false);
   const [draftCoordinates, setDraftCoordinates] = useState<{
@@ -160,6 +162,10 @@ export function Dashboard() {
         )
       : drivers;
   }, [drivers, search]);
+  const driverLocations = useMemo(() => {
+    const ids = new Set(drivers.map((driver) => driver.id));
+    return locations.filter((location) => ids.has(location.userId));
+  }, [drivers, locations]);
   const visibleDriverIds = useMemo(
     () => new Set(visibleDrivers.map((driver) => driver.id)),
     [visibleDrivers],
@@ -188,28 +194,36 @@ export function Dashboard() {
     places.find((item) => item.id === selectedPlaceId) ?? null;
   const fetchHistory = useCallback(async (id: number) => {
     setSelectedId(id);
+    setSelectedPlaceId(null);
+    setMapFocusTarget("history");
     setMapFocusRequest((current) => current + 1);
-    const result = await history.open(id);
-    if (result === "success" || result === "empty") {
-      setMapFocusRequest((current) => current + 1);
-    }
-    return result;
+    return history.open(id);
   }, [history.open]);
   const selectDriver = useCallback((id: number) => {
-    void fetchHistory(id);
-  }, [fetchHistory]);
+    setSelectedId(id);
+    setSelectedPlaceId(null);
+    setMapFocusTarget("driver");
+    setMapFocusRequest((current) => current + 1);
+    void history.open(id);
+  }, [history.open]);
   const selectPlace = useCallback((id: number) => {
     setSelectedPlaceId(id);
     setPlaceFocusRequest((current) => current + 1);
   }, []);
   // Reframe after a settled range change so dragging stays responsive.
   useEffect(() => {
-    if (history.driverId === null || history.loading || (history.rangeActive && history.dayLoading)) return;
-    const timer = window.setTimeout(() => setMapFocusRequest((current) => current + 1), 180);
+    if (!history.rangeActive || history.dayLoading) return;
+    const timer = window.setTimeout(() => {
+      setMapFocusTarget("history");
+      setMapFocusRequest((current) => current + 1);
+    }, 180);
     return () => window.clearTimeout(timer);
-  }, [history.driverId, history.loading, history.dayLoading, history.rangeActive, history.range]);
+  }, [history.dayLoading, history.rangeActive, history.range]);
   const changeView = (next: View) => {
     history.close();
+    setMapFocusRequest(0);
+    setPlaceFocusRequest(0);
+    setMapFocusTarget("driver");
     setView(next);
     setSearch("");
     setPlacementMode(false);
@@ -217,8 +231,9 @@ export function Dashboard() {
     setSidebarOpen(false);
   };
   const toggleStatus = async (target: User) => {
-    if (!token) return;
+    if (!token || updatingUserIds.includes(target.id)) return;
     const nextStatus = !(target.isActive === true || target.isActive === 1);
+    setUpdatingUserIds((current) => [...current, target.id]);
     try {
       await api.setUserStatus(token, target.id, nextStatus);
       setUsers((current) =>
@@ -228,6 +243,8 @@ export function Dashboard() {
       );
     } catch (requestError) {
       handleError(requestError);
+    } finally {
+      setUpdatingUserIds((current) => current.filter((id) => id !== target.id));
     }
   };
   const deleteUser = async (target: User) => {
@@ -279,6 +296,30 @@ export function Dashboard() {
     selectPlace(saved.id);
     closePlaceModal();
   };
+
+  const historyPanel = history.driverId !== null ? (
+    <HistoryTimeline
+      driverName={drivers.find((driver) => driver.id === history.driverId)?.fullName || "پیک بدون نام"}
+      days={history.days}
+      selectedDay={history.selectedDay}
+      range={history.range}
+      rangeActive={history.rangeActive}
+      loading={history.loading}
+      dayLoading={history.dayLoading}
+      error={history.error}
+      dayError={history.dayError}
+      pointCount={history.points.length}
+      onSelectDay={(day) => { void history.selectDay(day); }}
+      onRangeChange={history.changeRange}
+      onReset={() => {
+        history.resetRange();
+        setMapFocusTarget("history");
+        setMapFocusRequest((current) => current + 1);
+      }}
+      onRetry={() => { if (history.driverId !== null) void fetchHistory(history.driverId); }}
+      onClose={history.close}
+    />
+  ) : null;
 
   return (
     <div className="dashboard-shell min-h-screen [background:#f5f7fb]">
@@ -414,32 +455,16 @@ export function Dashboard() {
                 tone="amber"
               />
             </section>
-            {history.driverId !== null && (
-              <HistoryTimeline
-                driverName={drivers.find((driver) => driver.id === history.driverId)?.fullName || "پیک بدون نام"}
-                days={history.days}
-                selectedDay={history.selectedDay}
-                range={history.range}
-                rangeActive={history.rangeActive}
-                loading={history.loading}
-                dayLoading={history.dayLoading}
-                error={history.error}
-                dayError={history.dayError}
-                pointCount={history.points.length}
-                onSelectDay={(day) => { void history.selectDay(day); }}
-                onRangeChange={history.changeRange}
-                onReset={history.resetRange}
-                onRetry={() => { if (history.driverId !== null) void fetchHistory(history.driverId); }}
-                onClose={history.close}
-              />
-            )}
+            {historyPanel}
             <section className="map-card h-[calc(100vh_-_209px)] min-h-[540px] grid grid-cols-[minmax(0,_1fr)_310px] overflow-hidden [background:#fff] [border:1px_solid_#e4e8ef] rounded-[16px] [box-shadow:0_8px_28px_rgba(26,39,66,.055)] [@media(max-width:980px)]:h-[auto] [@media(max-width:980px)]:min-h-0 [@media(max-width:980px)]:grid-cols-[1fr]">
               <div className="map-panel relative min-w-0 [@media(max-width:980px)]:h-[520px] [@media(max-width:640px)]:[&&]:h-[440px]">
                 <LiveMap
+                  key="live-map"
                   locations={filteredLocations}
                   history={history.points}
                   historyLoading={history.loading || (history.rangeActive && history.dayLoading)}
                   focusRequest={mapFocusRequest}
+                  focusTarget={mapFocusTarget}
                   selectedId={selectedId}
                   onSelect={selectDriver}
                   onHistoryRequest={fetchHistory}
@@ -449,20 +474,7 @@ export function Dashboard() {
                   placeFocusRequest={placeFocusRequest}
                   onPlaceSelect={selectPlace}
                 />
-                <div className="map-legend absolute z-[500] left-[16px] bottom-[16px] flex gap-[12px] p-[9px_12px] text-[#596579] [background:rgba(255,255,255,.94)] [border:1px_solid_#e1e6ed] rounded-[8px] [box-shadow:0_4px_12px_rgba(19,31,54,.12)] text-[10px] [&_span]:flex [&_span]:items-center [&_span]:gap-[6px] [&_i]:w-[7px] [&_i]:h-[7px] [&_i]:rounded-[50%] [&_i]:[background:#94a3b8] [&_i.green-dot]:[background:#16a67b] [&_i.route-line-dot]:w-[38px] [&_i.route-line-dot]:h-[5px] [&_i.route-line-dot]:[background:linear-gradient(90deg,_#bfdbfe_0%,_#93c5fd_20%,_#60a5fa_40%,_#3b82f6_60%,_#2563eb_80%,_#1d4ed8_100%)] [&_i.route-line-dot]:rounded-[99px] [&_i.route-line-dot]:[box-shadow:0_0_0_1px_rgba(255,255,255,.9),_0_1px_3px_rgba(15,23,42,.18)] [&_i.place-dot]:[background:#6d4bc3]">
-                  <span>
-                    <i className="green-dot" /> آنلاین
-                  </span>
-                  <span>
-                    <i /> غیرفعال
-                  </span>
-                  <span>
-                    <i className="route-line-dot" /> مسیر انتخاب‌شده؛ قدیمی تا جدید
-                  </span>
-                  <span>
-                    <i className="place-dot" /> مکان ثابت
-                  </span>
-                </div>
+                <MapLegend />
               </div>
               <aside className="driver-panel min-w-0 min-h-0 flex flex-col [border-left:1px_solid_#e7eaf0] [@media(max-width:980px)]:h-[420px] [@media(max-width:980px)]:[border-top:1px_solid_#e7eaf0] [@media(max-width:980px)]:[border-left:0]">
                 <div className="panel-heading flex items-center justify-between p-[18px_17px_11px] [&_>_div]:flex [&_>_div]:items-center [&_>_div]:gap-[8px] [&_h2]:m-0 [&_h2]:text-[16px] [&_span]:p-[3px_7px] [&_span]:text-[#607086] [&_span]:[background:#edf0f5] [&_span]:rounded-[6px] [&_span]:text-[9px]">
@@ -515,6 +527,7 @@ export function Dashboard() {
           >
             <div className="map-panel relative min-w-0 [@media(max-width:980px)]:h-[520px] [@media(max-width:640px)]:[&&]:h-[440px]">
               <LiveMap
+                key="places-map"
                 locations={[]}
                 selectedId={null}
                 onSelect={() => undefined}
@@ -578,10 +591,7 @@ export function Dashboard() {
                       </span>
                       <span className="driver-info min-w-0 flex flex-1 flex-col gap-[5px] [&_b]:overflow-hidden [&_b]:text-[#293448] [&_b]:text-[11px] [&_b]:whitespace-nowrap [&_b]:text-ellipsis [&_small]:text-[#8a95a6] [&_small]:text-[9px]">
                         <b>{place.name}</b>
-                        <small dir="ltr">
-                          {Number(place.latitude).toFixed(5)},{" "}
-                          {Number(place.longitude).toFixed(5)}
-                        </small>
+                        <small>مکان ذخیره‌شده</small>
                       </span>
                     </button>
                     <span className="place-actions flex gap-[1px] [&_button]:w-[30px] [&_button]:h-[30px] [&_button]:grid [&_button]:place-items-center [&_button]:p-0 [&_button]:text-[#667085] [&_button]:bg-transparent [&_button]:[border:0] [&_button]:rounded-[7px] [&_button:hover]:text-[#0f766e] [&_button:hover]:[background:#eaf8f5] [&_button.danger:hover]:text-[#b42318] [&_button.danger:hover]:[background:#fff0ef]">
@@ -605,112 +615,46 @@ export function Dashboard() {
                 <div className="selected-driver flex flex-col gap-[5px] m-[10px] p-[12px] text-[#526174] [background:#f7f9fc] [border:1px_solid_#e6eaf0] rounded-[10px] text-[9px] [&_b]:text-[#1c293c] [&_b]:text-[11px] [&_small]:text-[#8d97a7]">
                   <span>مکان انتخاب‌شده</span>
                   <b>{selectedPlace.name}</b>
-                  <small dir="ltr">
-                    {Number(selectedPlace.latitude).toFixed(7)},{" "}
-                    {Number(selectedPlace.longitude).toFixed(7)}
-                  </small>
                 </div>
               )}
             </aside>
           </section>
         ) : (
-          <section className="users-card p-[24px] [background:#fff] [border:1px_solid_#e4e8ef] rounded-[16px] [box-shadow:0_8px_28px_rgba(26,39,66,.045)] [&_table]:w-full [&_table]:border-collapse [&_table]:whitespace-nowrap [&_th]:p-[12px] [&_th]:text-[#8390a2] [&_th]:[background:#f8fafc] [&_th]:[border-bottom:1px_solid_#e8ecf2] [&_th]:text-[10px] [&_th]:text-right [&_td]:p-[13px_12px] [&_td]:text-[#4a5669] [&_td]:[border-bottom:1px_solid_#eef1f4] [&_td]:text-[11px] [@media(max-width:640px)]:[&&]:p-[17px]">
-            <div className="users-toolbar flex items-center justify-between gap-[16px] [&_h2]:m-[0_0_7px] [&_h2]:text-[18px] [&_p]:m-0 [&_p]:text-[#8490a2] [&_p]:text-[11px] [@media(max-width:640px)]:[&&]:items-start [@media(max-width:640px)]:[&&]:flex-col [@media(max-width:640px)]:[&&]:[&_.primary-button]:w-full">
-              <div>
-                <h2>کاربران سامانه</h2>
-                <p>حساب مدیران و پیک‌ها را مدیریت کنید.</p>
+          <>
+            {historyPanel}
+            <section className="users-map-card">
+              <div className="users-map-panel">
+                <LiveMap
+                  key="users-map"
+                  locations={driverLocations}
+                  history={history.points}
+                  historyLoading={history.loading || (history.rangeActive && history.dayLoading)}
+                  focusRequest={mapFocusRequest}
+                  focusTarget={mapFocusTarget}
+                  selectedId={selectedId}
+                  onSelect={selectDriver}
+                  onHistoryRequest={fetchHistory}
+                  historyStatuses={history.statuses}
+                />
+                <div className="users-map-heading"><Truck size={17} /><b>موقعیت پیک‌ها</b><span>{driverLocations.length.toLocaleString("fa-IR")} پیک دارای موقعیت</span></div>
+                <MapLegend showPlaces={false} />
               </div>
-              <Button variant="primary" onClick={() => setShowAddUser(true)}>
-                <Plus size={18} /> افزودن کاربر
-              </Button>
-            </div>
-            <div className="table-search [&.table-search]:w-[min(100%,_320px)] [&.table-search]:m-[25px_0_16px] [@media(max-width:640px)]:[&&]:[&.table-search]:w-full search-box h-[40px] flex items-center gap-[8px] m-[0_16px_12px] p-[0_11px] text-[#9ba4b3] [background:#f7f8fa] [border:1px_solid_#e7e9ee] rounded-[9px] [&_input]:h-[auto] [&_input]:p-0 [&_input]:bg-transparent [&_input]:[border:0] [&_input]:[box-shadow:none] [&_input]:text-[11px]">
-              <Search size={17} />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="جست‌وجوی کاربر"
+              <UserManagementPanel
+                users={users}
+                locations={locationsByDriverId}
+                adminId={admin?.id}
+                selectedId={selectedId}
+                search={search}
+                deletingIds={deletingUserIds}
+                updatingIds={updatingUserIds}
+                onSearch={setSearch}
+                onAdd={() => setShowAddUser(true)}
+                onSelect={selectDriver}
+                onToggleStatus={toggleStatus}
+                onDelete={deleteUser}
               />
-            </div>
-            <div className="users-table-wrap overflow-x-auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th>کاربر</th>
-                    <th>شماره موبایل</th>
-                    <th>نقش</th>
-                    <th>وضعیت</th>
-                    <th>عملیات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users
-                    .filter((item) =>
-                      `${item.fullName || ""} ${item.phone}`.includes(
-                        search.trim(),
-                      ),
-                    )
-                    .map((item) => {
-                      const active =
-                        item.isActive === true || item.isActive === 1;
-                      const deleting = deletingUserIds.includes(item.id);
-                      return (
-                        <tr key={item.id}>
-                          <td>
-                            <div className="table-user flex items-center gap-[10px] [&_.avatar]:w-[31px] [&_.avatar]:h-[31px] [&_.avatar]:rounded-[9px] [&_b]:text-[#283448]">
-                              <Avatar>
-                                {(item.fullName || "ک").slice(0, 1)}
-                              </Avatar>
-                              <b>{item.fullName || "بدون نام"}</b>
-                            </div>
-                          </td>
-                          <td dir="ltr">{item.phone}</td>
-                          <td>
-                            <span
-                              className={`role-badge inline-flex items-center gap-[5px] p-[5px_8px] rounded-[7px] text-[9px] text-[#315c9d] [background:#eef4ff] [&.admin]:text-[#7750a1] [&.admin]:[background:#f5effb] ${item.role.toLowerCase()}`}
-                            >
-                              {item.role === "ADMIN" ? (
-                                <UserCog size={14} />
-                              ) : (
-                                <Truck size={14} />
-                              )}
-                              {item.role === "ADMIN" ? "مدیر" : "پیک"}
-                            </span>
-                          </td>
-                          <td>
-                            <span
-                              className={`status-badge inline-flex items-center gap-[5px] p-[5px_8px] rounded-[7px] text-[9px] text-[#8a5960] [background:#f6f0f1] [&_i]:w-[6px] [&_i]:h-[6px] [&_i]:rounded-[50%] [&_i]:[background:#a9868a] [&.active]:text-[#08785f] [&.active]:[background:#eaf9f4] [&.active_i]:[background:#16a37c] ${active ? "active" : ""}`}
-                            >
-                              <i />
-                              {active ? "فعال" : "غیرفعال"}
-                            </span>
-                          </td>
-                          <td>
-                            <Button
-                              variant="text"
-                              disabled={item.id === admin?.id || deleting}
-                              onClick={() => toggleStatus(item)}
-                            >
-                              {active ? "غیرفعال‌سازی" : "فعال‌سازی"}
-                            </Button>
-                            {item.role === "DRIVER" && (
-                              <Button
-                                variant="text"
-                                className="delete-user-button [&.delete-user-button]:mr-[4px] [&.delete-user-button]:text-[#b42318] [&.delete-user-button:hover]:[background:#fff0ef]"
-                                disabled={deleting}
-                                onClick={() => deleteUser(item)}
-                              >
-                                {deleting ? "در حال حذف…" : "حذف پیک"}
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+            </section>
+          </>
         )}
       </main>
       {showAddUser && token && (
