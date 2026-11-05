@@ -1,246 +1,736 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, CircleUserRound, LogOut, Map, MapPinned, Menu, MousePointer2, Navigation, Plus, RefreshCw, Search, Trash2, Truck, UserCog, Users, Wifi, WifiOff, X } from 'lucide-react';
-import { io } from 'socket.io-client';
-import { api, API_URL, ApiError } from '../api';
-import { useAuth } from '../auth';
-import type { DriverLocation, SavedPlace, User } from '../types';
-import { AddUserModal } from './AddUserModal';
-import { DriverListItem } from './DriverListItem';
-import type { HistoryActionStatus, HistoryRequestResult } from './HistoryActionButton';
-import { LiveMap } from './LiveMap';
-import { PlaceModal } from './PlaceModal';
+import { Input } from "./ui/FormControls";
+import { StatCard } from "./ui/StatCard";
+import { Avatar } from "./ui/Avatar";
+import { Button } from "./ui/Button";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  CircleUserRound,
+  LogOut,
+  Map,
+  MapPinned,
+  Menu,
+  MousePointer2,
+  Navigation,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Truck,
+  UserCog,
+  Users,
+  Wifi,
+  WifiOff,
+  X,
+} from "lucide-react";
+import { io } from "socket.io-client";
+import { api, API_URL, ApiError } from "../api";
+import { useAuth } from "../auth";
+import type { DriverLocation, SavedPlace, User } from "../types";
+import { AddUserModal } from "./AddUserModal";
+import { DriverListItem } from "./DriverListItem";
+import { HistoryTimeline } from "./HistoryTimeline";
+import { useDriverHistory } from "../hooks/useDriverHistory";
+import { LiveMap } from "./LiveMap";
+import { PlaceModal } from "./PlaceModal";
 
-type View = 'map' | 'places' | 'users';
-type ConnectionState = 'connecting' | 'connected' | 'disconnected';
+type View = "map" | "places" | "users";
+type ConnectionState = "connecting" | "connected" | "disconnected";
 
 const locationTime = (date: string) => {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 1000));
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(date).getTime()) / 1000),
+  );
   if (seconds < 60) return `${seconds} ثانیه پیش`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)} دقیقه پیش`;
-  return new Date(date).toLocaleString('fa-IR', { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' });
+  return new Date(date).toLocaleString("fa-IR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric",
+  });
 };
-const online = (date: string) => Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
+const online = (date: string) =>
+  Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
 
 export function Dashboard() {
   const { token, user: admin, logout } = useAuth();
-  const [view, setView] = useState<View>('map');
+  const [view, setView] = useState<View>("map");
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<DriverLocation[]>([]);
-  const [locationHistory, setLocationHistory] = useState<DriverLocation[]>([]);
-  const [historyVisible, setHistoryVisible] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyStatuses, setHistoryStatuses] = useState<Record<number, HistoryActionStatus>>({});
+  const history = useDriverHistory(token, logout);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
   const [placeFocusRequest, setPlaceFocusRequest] = useState(0);
-  const [connection, setConnection] = useState<ConnectionState>('connecting');
+  const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const [showAddUser, setShowAddUser] = useState(false);
   const [deletingUserIds, setDeletingUserIds] = useState<number[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [placementMode, setPlacementMode] = useState(false);
-  const [draftCoordinates, setDraftCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
-  const selectedIdRef = useRef<number | null>(null);
-  const historyVisibleRef = useRef(false);
-  const historyAbortRef = useRef<AbortController | null>(null);
-  const historyRequestIdRef = useRef(0);
-  selectedIdRef.current = selectedId;
-  historyVisibleRef.current = historyVisible;
+  const [draftCoordinates, setDraftCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const handleError = useCallback(
+    (requestError: unknown) => {
+      if (requestError instanceof ApiError && requestError.status === 401) {
+        logout();
+        return;
+      }
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "دریافت اطلاعات ناموفق بود.",
+      );
+    },
+    [logout],
+  );
 
-  const handleError = useCallback((requestError: unknown) => {
-    if (requestError instanceof ApiError && requestError.status === 401) { logout(); return; }
-    setError(requestError instanceof Error ? requestError.message : 'دریافت اطلاعات ناموفق بود.');
-  }, [logout]);
+  const loadData = useCallback(
+    async (silent = false) => {
+      if (!token) return;
+      if (!silent) setLoading(true);
+      setError("");
+      try {
+        const [allUsers, latest, savedPlaces] = await Promise.all([
+          api.users(token),
+          api.latestLocations(token),
+          api.places(token),
+        ]);
+        setUsers(allUsers);
+        setLocations(latest);
+        setPlaces(savedPlaces);
+        setSelectedId((current) => current ?? latest[0]?.userId ?? null);
+      } catch (requestError) {
+        handleError(requestError);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [token, handleError],
+  );
 
-  const loadData = useCallback(async (silent = false) => {
-    if (!token) return;
-    if (!silent) setLoading(true);
-    setError('');
-    try {
-      const [allUsers, latest, savedPlaces] = await Promise.all([api.users(token), api.latestLocations(token), api.places(token)]);
-      setUsers(allUsers); setLocations(latest); setPlaces(savedPlaces);
-      setSelectedId((current) => current ?? latest[0]?.userId ?? null);
-    } catch (requestError) { handleError(requestError); }
-    finally { if (!silent) setLoading(false); }
-  }, [token, handleError]);
-
-  useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => () => historyAbortRef.current?.abort(), []);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
   useEffect(() => {
     if (!token) return;
-    const socket = io(API_URL, { auth: { token }, transports: ['websocket', 'polling'], autoConnect: false });
-    socket.on('connect', () => setConnection('connected'));
-    socket.on('disconnect', () => setConnection('disconnected'));
-    socket.on('connect_error', () => setConnection('disconnected'));
-    socket.on('location:update', (location: DriverLocation) => {
-      setLocations((current) => [location, ...current.filter((item) => item.userId !== location.userId)]);
-      if (historyVisibleRef.current && selectedIdRef.current === location.userId) {
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-        setLocationHistory((current) => [...current.filter((item) => item.id !== location.id &&
-          new Date(item.recordedAt).getTime() >= cutoff), location]);
-      }
+    const socket = io(API_URL, {
+      auth: { token },
+      transports: ["websocket", "polling"],
+      autoConnect: false,
+    });
+    socket.on("connect", () => setConnection("connected"));
+    socket.on("disconnect", () => setConnection("disconnected"));
+    socket.on("connect_error", () => setConnection("disconnected"));
+    socket.on("location:update", (location: DriverLocation) => {
+      setLocations((current) => [
+        location,
+        ...current.filter((item) => item.userId !== location.userId),
+      ]);
+      history.appendLocation(location);
     });
     const connectTimer = window.setTimeout(() => socket.connect(), 0);
-    return () => { window.clearTimeout(connectTimer); socket.removeAllListeners(); socket.disconnect(); };
-  }, [token]);
-  useEffect(() => { const timer = window.setInterval(() => loadData(true), 30_000); return () => window.clearInterval(timer); }, [loadData]);
+    return () => {
+      window.clearTimeout(connectTimer);
+      socket.removeAllListeners();
+      socket.disconnect();
+    };
+  }, [token, history.appendLocation]);
+  useEffect(() => {
+    const timer = window.setInterval(() => loadData(true), 30_000);
+    return () => window.clearInterval(timer);
+  }, [loadData]);
 
-  const drivers = useMemo(() => users.filter((item) => item.role === 'DRIVER'), [users]);
+  const drivers = useMemo(
+    () => users.filter((item) => item.role === "DRIVER"),
+    [users],
+  );
   const visibleDrivers = useMemo(() => {
     const phrase = search.trim().toLowerCase();
-    return phrase ? drivers.filter((item) => `${item.fullName || ''} ${item.phone}`.toLowerCase().includes(phrase)) : drivers;
+    return phrase
+      ? drivers.filter((item) =>
+          `${item.fullName || ""} ${item.phone}`.toLowerCase().includes(phrase),
+        )
+      : drivers;
   }, [drivers, search]);
-  const visibleDriverIds = useMemo(() => new Set(visibleDrivers.map((driver) => driver.id)), [visibleDrivers]);
-  const filteredLocations = useMemo(() => locations.filter((location) => visibleDriverIds.has(location.userId)), [locations, visibleDriverIds]);
-  const locationsByDriverId = useMemo(() => new globalThis.Map(locations.map((location) =>
-    [location.userId, location] as const)), [locations]);
+  const visibleDriverIds = useMemo(
+    () => new Set(visibleDrivers.map((driver) => driver.id)),
+    [visibleDrivers],
+  );
+  const filteredLocations = useMemo(
+    () => locations.filter((location) => visibleDriverIds.has(location.userId)),
+    [locations, visibleDriverIds],
+  );
+  const locationsByDriverId = useMemo(
+    () =>
+      new globalThis.Map(
+        locations.map((location) => [location.userId, location] as const),
+      ),
+    [locations],
+  );
   const visiblePlaces = useMemo(() => {
     const phrase = search.trim().toLowerCase();
-    return phrase ? places.filter((item) => item.name.toLowerCase().includes(phrase)) : places;
+    return phrase
+      ? places.filter((item) => item.name.toLowerCase().includes(phrase))
+      : places;
   }, [places, search]);
-  const onlineCount = locations.filter((item) => online(item.recordedAt)).length;
-  const selectedPlace = places.find((item) => item.id === selectedPlaceId) ?? null;
-  const cancelHistoryRequest = useCallback(() => {
-    historyRequestIdRef.current += 1;
-    historyAbortRef.current?.abort();
-    historyAbortRef.current = null;
-    setHistoryLoading(false);
-    setHistoryStatuses((current) => Object.fromEntries(Object.entries(current)
-      .map(([id, status]) => [id, status === 'loading' ? 'idle' : status])));
-  }, []);
-  const selectDriver = useCallback((id: number) => {
-    cancelHistoryRequest();
-    setLocationHistory([]);
-    setHistoryVisible(false);
+  const onlineCount = locations.filter((item) =>
+    online(item.recordedAt),
+  ).length;
+  const selectedPlace =
+    places.find((item) => item.id === selectedPlaceId) ?? null;
+  const fetchHistory = useCallback(async (id: number) => {
     setSelectedId(id);
     setMapFocusRequest((current) => current + 1);
-  }, [cancelHistoryRequest]);
+    const result = await history.open(id);
+    if (result === "success" || result === "empty") {
+      setMapFocusRequest((current) => current + 1);
+    }
+    return result;
+  }, [history.open]);
+  const selectDriver = useCallback((id: number) => {
+    void fetchHistory(id);
+  }, [fetchHistory]);
   const selectPlace = useCallback((id: number) => {
     setSelectedPlaceId(id);
     setPlaceFocusRequest((current) => current + 1);
   }, []);
-  const fetchHistory = useCallback(async (driverId: number): Promise<HistoryRequestResult> => {
-    if (!token) return 'error' as const;
-    cancelHistoryRequest();
-    const requestId = historyRequestIdRef.current + 1;
-    historyRequestIdRef.current = requestId;
-    const controller = new AbortController();
-    historyAbortRef.current = controller;
-    let didTimeout = false;
-    const timeout = window.setTimeout(() => { didTimeout = true; controller.abort(); }, 15_000);
-    setSelectedId(driverId);
-    setLocationHistory([]);
-    setHistoryVisible(false);
-    setHistoryLoading(true);
-    setHistoryStatuses((current) => ({ ...current, [driverId]: 'loading' }));
-    try {
-      const history = await api.locationHistory(token, driverId, controller.signal);
-      if (requestId !== historyRequestIdRef.current) return 'cancelled';
-      if (!history.length) {
-        setHistoryStatuses((current) => ({ ...current, [driverId]: 'empty' }));
-        return 'empty';
-      }
-      setLocationHistory(history);
-      setHistoryVisible(true);
-      setMapFocusRequest((current) => current + 1);
-      setHistoryStatuses((current) => ({ ...current, [driverId]: 'idle' }));
-      return 'success';
-    } catch (requestError) {
-      if (requestId !== historyRequestIdRef.current) return 'cancelled';
-      const status: HistoryActionStatus = didTimeout ? 'error' :
-        requestError instanceof DOMException && requestError.name === 'AbortError' ? 'idle' : 'error';
-      setHistoryStatuses((current) => ({ ...current, [driverId]: status }));
-      return status === 'error' ? 'error' : 'cancelled';
-    } finally {
-      window.clearTimeout(timeout);
-      if (requestId === historyRequestIdRef.current) {
-        historyAbortRef.current = null;
-        setHistoryLoading(false);
-      }
-    }
-  }, [token, cancelHistoryRequest]);
-  const changeView = (next: View) => { cancelHistoryRequest(); setHistoryVisible(false); setLocationHistory([]); setView(next); setSearch(''); setPlacementMode(false); setDraftCoordinates(null); setSidebarOpen(false); };
+  // Reframe after a settled range change so dragging stays responsive.
+  useEffect(() => {
+    if (history.driverId === null || history.loading || (history.rangeActive && history.dayLoading)) return;
+    const timer = window.setTimeout(() => setMapFocusRequest((current) => current + 1), 180);
+    return () => window.clearTimeout(timer);
+  }, [history.driverId, history.loading, history.dayLoading, history.rangeActive, history.range]);
+  const changeView = (next: View) => {
+    history.close();
+    setView(next);
+    setSearch("");
+    setPlacementMode(false);
+    setDraftCoordinates(null);
+    setSidebarOpen(false);
+  };
   const toggleStatus = async (target: User) => {
     if (!token) return;
     const nextStatus = !(target.isActive === true || target.isActive === 1);
-    try { await api.setUserStatus(token, target.id, nextStatus); setUsers((current) => current.map((item) => item.id === target.id ? { ...item, isActive: nextStatus } : item)); }
-    catch (requestError) { handleError(requestError); }
+    try {
+      await api.setUserStatus(token, target.id, nextStatus);
+      setUsers((current) =>
+        current.map((item) =>
+          item.id === target.id ? { ...item, isActive: nextStatus } : item,
+        ),
+      );
+    } catch (requestError) {
+      handleError(requestError);
+    }
   };
   const deleteUser = async (target: User) => {
-    if (!token || target.role !== 'DRIVER' || deletingUserIds.includes(target.id) ||
-        !window.confirm(`حساب پیک «${target.fullName || target.phone}» و تمام سوابق موقعیتش حذف شود؟ این کار قابل بازگشت نیست.`)) return;
+    if (
+      !token ||
+      target.role !== "DRIVER" ||
+      deletingUserIds.includes(target.id) ||
+      !window.confirm(
+        `حساب پیک «${target.fullName || target.phone}» و تمام سوابق موقعیتش حذف شود؟ این کار قابل بازگشت نیست.`,
+      )
+    )
+      return;
     setDeletingUserIds((current) => [...current, target.id]);
     try {
       await api.deleteUser(token, target.id);
       setUsers((current) => current.filter((item) => item.id !== target.id));
-      setLocations((current) => current.filter((item) => item.userId !== target.id));
-      setSelectedId((current) => current === target.id ? null : current);
-    } catch (requestError) { handleError(requestError); }
-    finally { setDeletingUserIds((current) => current.filter((id) => id !== target.id)); }
+      setLocations((current) =>
+        current.filter((item) => item.userId !== target.id),
+      );
+      setSelectedId((current) => (current === target.id ? null : current));
+      if (history.driverId === target.id) history.close();
+    } catch (requestError) {
+      handleError(requestError);
+    } finally {
+      setDeletingUserIds((current) => current.filter((id) => id !== target.id));
+    }
   };
-  const startPlacement = () => { setDraftCoordinates(null); setPlacementMode(true); setError(''); };
+  const startPlacement = () => {
+    setDraftCoordinates(null);
+    setPlacementMode(true);
+    setError("");
+  };
   const deletePlace = async (place: SavedPlace) => {
     if (!token || !window.confirm(`مکان «${place.name}» حذف شود؟`)) return;
-    try { await api.deletePlace(token, place.id); setPlaces((current) => current.filter((item) => item.id !== place.id)); setSelectedPlaceId((current) => current === place.id ? null : current); }
-    catch (requestError) { handleError(requestError); }
+    try {
+      await api.deletePlace(token, place.id);
+      setPlaces((current) => current.filter((item) => item.id !== place.id));
+      setSelectedPlaceId((current) => (current === place.id ? null : current));
+    } catch (requestError) {
+      handleError(requestError);
+    }
   };
-  const closePlaceModal = () => { setDraftCoordinates(null); setPlacementMode(false); };
+  const closePlaceModal = () => {
+    setDraftCoordinates(null);
+    setPlacementMode(false);
+  };
   const savePlace = (saved: SavedPlace) => {
     setPlaces((current) => [...current, saved]);
-    selectPlace(saved.id); closePlaceModal();
+    selectPlace(saved.id);
+    closePlaceModal();
   };
 
-  return <div className="dashboard-shell">
-    <button className="mobile-menu" onClick={() => setSidebarOpen(true)}><Menu size={22} /></button>
-    {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-    <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-      <button className="sidebar-close" onClick={() => setSidebarOpen(false)}><X size={20} /></button>
-      <div className="sidebar-brand"><span><Navigation size={22} /></span><div><b>راه‌نگار</b><small>مرکز کنترل ارسال</small></div></div>
-      <nav><button className={view === 'map' ? 'active' : ''} onClick={() => changeView('map')}><Map size={19} /><span>نقشه زنده</span></button>
-        <button className={view === 'places' ? 'active' : ''} onClick={() => changeView('places')}><MapPinned size={19} /><span>مدیریت مکان‌ها</span></button>
-        <button className={view === 'users' ? 'active' : ''} onClick={() => changeView('users')}><Users size={19} /><span>مدیریت کاربران</span></button></nav>
-      <div className="sidebar-system"><span className={connection === 'connected' ? 'ok' : ''} /><div><b>{connection === 'connected' ? 'سامانه متصل است' : 'در حال اتصال...'}</b><small>به‌روزرسانی لحظه‌ای</small></div></div>
-      <div className="sidebar-user"><CircleUserRound size={34} /><div><b>{admin?.fullName || 'مدیر سیستم'}</b><small>{admin?.phone}</small></div><button onClick={logout} title="خروج"><LogOut size={18} /></button></div>
-    </aside>
+  return (
+    <div className="dashboard-shell min-h-screen [background:#f5f7fb]">
+      <button
+        className="mobile-menu hidden [@media(max-width:980px)]:fixed [@media(max-width:980px)]:z-[30] [@media(max-width:980px)]:top-[18px] [@media(max-width:980px)]:right-[18px] [@media(max-width:980px)]:w-[42px] [@media(max-width:980px)]:h-[42px] [@media(max-width:980px)]:grid [@media(max-width:980px)]:place-items-center [@media(max-width:980px)]:text-[#fff] [@media(max-width:980px)]:[background:#111c32] [@media(max-width:980px)]:[border:0] [@media(max-width:980px)]:rounded-[11px] [@media(max-width:980px)]:[box-shadow:0_5px_14px_rgba(15,23,42,.18)]"
+        onClick={() => setSidebarOpen(true)}
+      >
+        <Menu size={22} />
+      </button>
+      {sidebarOpen && (
+        <div
+          className="sidebar-overlay [@media(max-width:980px)]:fixed [@media(max-width:980px)]:z-[35] [@media(max-width:980px)]:inset-[0] [@media(max-width:980px)]:[background:rgba(15,23,42,.4)]"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside
+        className={`sidebar fixed z-[40] top-[0] right-[0] bottom-[0] w-[255px] flex flex-col p-[26px_18px_18px] text-[#cdd6e7] [background:#111c32] [&_nav]:mt-[26px] [&_nav]:grid [&_nav]:gap-[7px] [&_nav_button]:h-[46px] [&_nav_button]:flex [&_nav_button]:items-center [&_nav_button]:gap-[12px] [&_nav_button]:p-[0_14px] [&_nav_button]:text-[#94a2b9] [&_nav_button]:bg-transparent [&_nav_button]:[border:0] [&_nav_button]:rounded-[10px] [&_nav_button]:text-right [&_nav_button:hover]:text-[#e5ebf4] [&_nav_button:hover]:[background:rgba(255,255,255,.04)] [&_nav_button.active.active]:text-[#fff] [&_nav_button.active.active]:[background:linear-gradient(90deg,_rgba(28,150,137,.28),_rgba(28,150,137,.14))] [&_nav_button.active.active_svg]:text-[#52d8b0] [@media(max-width:980px)]:[transform:translateX(105%)] [@media(max-width:980px)]:[transition:transform_.25s_ease] [@media(max-width:980px)]:[&.open]:[transform:translateX(0)] ${sidebarOpen ? "open" : ""}`}
+      >
+        <button
+          className="sidebar-close hidden [@media(max-width:980px)]:grid [@media(max-width:980px)]:absolute [@media(max-width:980px)]:left-[10px] [@media(max-width:980px)]:top-[10px] [@media(max-width:980px)]:text-[#b8c2d2]"
+          onClick={() => setSidebarOpen(false)}
+        >
+          <X size={20} />
+        </button>
+        <div className="sidebar-brand flex items-center gap-[12px] p-[0_9px_28px] [border-bottom:1px_solid_rgba(255,255,255,.08)] [&_>_span]:w-[42px] [&_>_span]:h-[42px] [&_>_span]:grid [&_>_span]:place-items-center [&_>_span]:text-[#092c2d] [&_>_span]:[background:#53d8b0] [&_>_span]:rounded-[13px] [&_>_span]:[transform:rotate(-6deg)] [&_>_span_svg]:[transform:rotate(6deg)] [&_div]:flex [&_div]:flex-col [&_div]:gap-[4px] [&_b]:text-[#fff] [&_b]:text-[19px] [&_small]:text-[#8593ab] [&_small]:text-[10px]">
+          <span>
+            <Navigation size={22} />
+          </span>
+          <div>
+            <b>راه‌نگار</b>
+            <small>مرکز کنترل ارسال</small>
+          </div>
+        </div>
+        <nav>
+          <button
+            className={view === "map" ? "active" : ""}
+            onClick={() => changeView("map")}
+          >
+            <Map size={19} />
+            <span>نقشه زنده</span>
+          </button>
+          <button
+            className={view === "places" ? "active" : ""}
+            onClick={() => changeView("places")}
+          >
+            <MapPinned size={19} />
+            <span>مدیریت مکان‌ها</span>
+          </button>
+          <button
+            className={view === "users" ? "active" : ""}
+            onClick={() => changeView("users")}
+          >
+            <Users size={19} />
+            <span>مدیریت کاربران</span>
+          </button>
+        </nav>
+        <div className="sidebar-system mt-auto flex items-center gap-[10px] p-[14px_11px] [border:1px_solid_rgba(255,255,255,.07)] rounded-[11px] [background:rgba(255,255,255,.025)] [&_>_span]:w-[9px] [&_>_span]:h-[9px] [&_>_span]:rounded-[50%] [&_>_span]:[background:#ef8354] [&_>_span.ok]:[background:#4cdda6] [&_>_span.ok]:[box-shadow:0_0_0_5px_rgba(76,221,166,.08)] [&_div]:min-w-0 [&_div]:flex [&_div]:flex-1 [&_div]:flex-col [&_div]:gap-[4px] [&_b]:text-[#dce4f0] [&_b]:text-[11px] [&_small]:text-[#78879e] [&_small]:text-[9px]">
+          <span className={connection === "connected" ? "ok" : ""} />
+          <div>
+            <b>
+              {connection === "connected"
+                ? "سامانه متصل است"
+                : "در حال اتصال..."}
+            </b>
+            <small>به‌روزرسانی لحظه‌ای</small>
+          </div>
+        </div>
+        <div className="sidebar-user [&_div]:min-w-0 [&_div]:flex [&_div]:flex-1 [&_div]:flex-col [&_div]:gap-[4px] [&_small]:text-[#78879e] [&_small]:text-[9px] flex items-center gap-[10px] mt-[12px] p-[14px_6px_0] [border-top:1px_solid_rgba(255,255,255,.08)] [&_b]:overflow-hidden [&_b]:text-[#eef2f8] [&_b]:text-[11px] [&_b]:whitespace-nowrap [&_b]:text-ellipsis [&_button]:text-[#8090a9] [&_button]:[background:none] [&_button]:[border:0]">
+          <CircleUserRound size={34} />
+          <div>
+            <b>{admin?.fullName || "مدیر سیستم"}</b>
+            <small>{admin?.phone}</small>
+          </div>
+          <button onClick={logout} title="خروج">
+            <LogOut size={18} />
+          </button>
+        </div>
+      </aside>
 
-    <main className="dashboard-main">
-      <header className="topbar"><div><p>مرکز عملیات</p><h1>{view === 'map' ? 'نقشه زنده پیک‌ها' : view === 'places' ? 'مدیریت مکان‌ها' : 'مدیریت کاربران'}</h1></div>
-        <div className={`connection-badge ${connection}`}>{connection === 'connected' ? <Wifi size={16} /> : <WifiOff size={16} />}{connection === 'connected' ? 'ارتباط زنده' : 'ارتباط قطع است'}</div></header>
-      {error && <div className="page-error"><span>{error}</span><button onClick={() => loadData()}>تلاش مجدد</button></div>}
-      {loading ? <div className="content-loader"><RefreshCw className="spin" /><span>در حال دریافت اطلاعات...</span></div> : view === 'map' ? <>
-        <section className="stats-grid"><article><span className="stat-icon blue"><Truck /></span><div><small>کل پیک‌ها</small><strong>{drivers.length.toLocaleString('fa-IR')}</strong></div></article>
-          <article><span className="stat-icon green"><Activity /></span><div><small>آنلاین</small><strong>{onlineCount.toLocaleString('fa-IR')}</strong></div></article>
-          <article><span className="stat-icon amber"><Map /></span><div><small>دارای موقعیت</small><strong>{locations.length.toLocaleString('fa-IR')}</strong></div></article></section>
-        <section className="map-card"><div className="map-panel"><LiveMap locations={filteredLocations} history={historyVisible ? locationHistory : []} historyLoading={historyLoading} focusRequest={mapFocusRequest} selectedId={selectedId} onSelect={selectDriver} onHistoryRequest={fetchHistory} historyStatuses={historyStatuses} places={places} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} />
-          <div className="map-legend"><span><i className="green-dot" /> آنلاین</span><span><i /> غیرفعال</span><span><i className="route-line-dot" /> مسیر ۲۴ ساعت؛ قدیمی تا جدید</span><span><i className="place-dot" /> مکان ثابت</span></div></div>
-          <aside className="driver-panel"><div className="panel-heading"><div><h2>پیک‌ها</h2><span>{visibleDrivers.length.toLocaleString('fa-IR')} نفر</span></div><button className="icon-button" onClick={() => loadData()}><RefreshCw size={17} /></button></div>
-            <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام یا شماره" /></div>
-            <div className="driver-list">{visibleDrivers.map((driver) => <DriverListItem key={driver.id} driver={driver}
-              location={locationsByDriverId.get(driver.id)} selected={selectedId === driver.id}
-              historyStatus={historyStatuses[driver.id] ?? 'idle'} onSelect={selectDriver}
-              onHistoryRequest={(id) => { void fetchHistory(id); }} formatLocationTime={locationTime} isOnline={online} />)}
-              {!visibleDrivers.length && <div className="empty-state">پیکی با این مشخصات پیدا نشد.</div>}</div>
-          </aside></section></> : view === 'places' ?
-        <section className={`map-card places-card ${placementMode ? 'placing' : ''}`}><div className="map-panel"><LiveMap locations={[]} selectedId={null} onSelect={() => undefined} places={visiblePlaces} selectedPlaceId={selectedPlaceId} placeFocusRequest={placeFocusRequest} onPlaceSelect={selectPlace} placementMode={placementMode} draftCoordinates={draftCoordinates} onMapClick={(latitude, longitude) => setDraftCoordinates({ latitude, longitude })} />
-          {placementMode && !draftCoordinates && <div className="placement-hint"><MousePointer2 size={18} /> محل موردنظر را روی نقشه انتخاب کنید.</div>}</div>
-          <aside className="driver-panel places-panel"><div className="panel-heading"><div><h2>مکان‌ها</h2><span>{places.length.toLocaleString('fa-IR')} مورد</span></div><button className="icon-button" onClick={() => loadData()} title="به‌روزرسانی"><RefreshCw size={17} /></button></div>
-            <button className={`add-place-button ${placementMode ? 'active' : ''}`} onClick={startPlacement}><Plus size={17} /> افزودن مکان از روی نقشه</button>
-            <div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی نام مکان" /></div>
-            <div className="driver-list place-list">{visiblePlaces.map((place) => <div key={place.id} className={`place-item ${selectedPlaceId === place.id ? 'selected' : ''}`}>
-              <button className="place-item-main" onClick={() => selectPlace(place.id)}><span className="place-avatar"><MapPinned size={17} /></span><span className="driver-info"><b>{place.name}</b><small dir="ltr">{Number(place.latitude).toFixed(5)}, {Number(place.longitude).toFixed(5)}</small></span></button>
-              <span className="place-actions"><button className="danger" onClick={() => deletePlace(place)} title="حذف"><Trash2 size={15} /></button></span></div>)}
-              {!visiblePlaces.length && <div className="empty-state">مکانی با این نام پیدا نشد.</div>}</div>
-            {selectedPlace && <div className="selected-driver"><span>مکان انتخاب‌شده</span><b>{selectedPlace.name}</b><small dir="ltr">{Number(selectedPlace.latitude).toFixed(7)}, {Number(selectedPlace.longitude).toFixed(7)}</small></div>}
-          </aside></section> :
-        <section className="users-card"><div className="users-toolbar"><div><h2>کاربران سامانه</h2><p>حساب مدیران و پیک‌ها را مدیریت کنید.</p></div><button className="primary-button" onClick={() => setShowAddUser(true)}><Plus size={18} /> افزودن کاربر</button></div>
-          <div className="table-search search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جست‌وجوی کاربر" /></div>
-          <div className="users-table-wrap"><table><thead><tr><th>کاربر</th><th>شماره موبایل</th><th>نقش</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>{users.filter((item) => `${item.fullName || ''} ${item.phone}`.includes(search.trim())).map((item) => { const active = item.isActive === true || item.isActive === 1; const deleting = deletingUserIds.includes(item.id); return <tr key={item.id}><td><div className="table-user"><span className="avatar">{(item.fullName || 'ک').slice(0, 1)}</span><b>{item.fullName || 'بدون نام'}</b></div></td><td dir="ltr">{item.phone}</td><td><span className={`role-badge ${item.role.toLowerCase()}`}>{item.role === 'ADMIN' ? <UserCog size={14} /> : <Truck size={14} />}{item.role === 'ADMIN' ? 'مدیر' : 'پیک'}</span></td><td><span className={`status-badge ${active ? 'active' : ''}`}><i />{active ? 'فعال' : 'غیرفعال'}</span></td><td><button className="text-button" disabled={item.id === admin?.id || deleting} onClick={() => toggleStatus(item)}>{active ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button>{item.role === 'DRIVER' && <button className="text-button delete-user-button" disabled={deleting} onClick={() => deleteUser(item)}>{deleting ? 'در حال حذف…' : 'حذف پیک'}</button>}</td></tr>; })}</tbody></table></div></section>}
-    </main>
-    {showAddUser && token && <AddUserModal token={token} onClose={() => setShowAddUser(false)} onCreated={(newUser) => { setUsers((current) => [newUser, ...current]); setShowAddUser(false); }} />}
-    {token && draftCoordinates && <PlaceModal token={token} coordinates={draftCoordinates} onClose={closePlaceModal} onSaved={savePlace} />}
-  </div>;
+      <main className="dashboard-main min-h-screen mr-[255px] p-[29px_34px_40px] [@media(max-width:980px)]:mr-[0] [@media(max-width:980px)]:p-[75px_18px_28px]">
+        <header className="topbar flex items-center justify-between mb-[25px] [&_p]:m-[0_0_7px] [&_p]:text-[#8590a3] [&_p]:text-[11px] [&_h1]:m-0 [&_h1]:text-[#172033] [&_h1]:text-[24px] [@media(max-width:640px)]:[&&]:items-start [@media(max-width:640px)]:[&&]:gap-[13px] [@media(max-width:640px)]:[&&]:[&_h1]:text-[20px]">
+          <div>
+            <p>مرکز عملیات</p>
+            <h1>
+              {view === "map"
+                ? "نقشه زنده پیک‌ها"
+                : view === "places"
+                  ? "مدیریت مکان‌ها"
+                  : "مدیریت کاربران"}
+            </h1>
+          </div>
+          <div
+            className={`connection-badge flex items-center gap-[8px] p-[9px_12px] text-[#b54708] [background:#fff4e5] [border:1px_solid_#fed7aa] rounded-[9px] text-[11px] [&.connected]:text-[#08785f] [&.connected]:[background:#eafaf5] [&.connected]:[border-color:#b9eedc] [@media(max-width:640px)]:[&&]:p-[8px] [@media(max-width:640px)]:[&&]:[&_svg]:hidden ${connection}`}
+          >
+            {connection === "connected" ? (
+              <Wifi size={16} />
+            ) : (
+              <WifiOff size={16} />
+            )}
+            {connection === "connected" ? "ارتباط زنده" : "ارتباط قطع است"}
+          </div>
+        </header>
+        {error && (
+          <div className="page-error text-[#b42318] [background:#fff1f0] [border:1px_solid_#ffd4d0] rounded-[10px] flex items-center justify-between p-[12px_15px] mb-[16px] text-[12px] [&_button]:text-[#b42318] [&_button]:bg-transparent [&_button]:[border:0] [&_button]:font-bold">
+            <span>{error}</span>
+            <button onClick={() => loadData()}>تلاش مجدد</button>
+          </div>
+        )}
+        {loading ? (
+          <div className="content-loader min-h-[60vh] flex items-center justify-center gap-[12px] text-[#64748b]">
+            <RefreshCw className="spin animate-spin" />
+            <span>در حال دریافت اطلاعات...</span>
+          </div>
+        ) : view === "map" ? (
+          <>
+            <section className="stats-grid grid grid-cols-[repeat(3,_1fr)] gap-[15px] mb-[16px] [&_article]:min-h-[92px] [&_article]:flex [&_article]:items-center [&_article]:gap-[14px] [&_article]:p-[17px] [&_article]:[background:#fff] [&_article]:[border:1px_solid_#e8ebf1] [&_article]:rounded-[14px] [&_article]:[box-shadow:0_3px_10px_rgba(19,31,54,.025)] [&_article_div]:flex [&_article_div]:flex-col [&_article_div]:gap-[5px] [&_small]:text-[#8993a4] [&_small]:text-[11px] [&_strong]:text-[#172033] [&_strong]:text-[24px] [@media(max-width:640px)]:[&&]:grid-cols-[1fr]">
+              <StatCard
+                icon={<Truck />}
+                label="کل پیک‌ها"
+                value={drivers.length}
+                tone="blue"
+              />
+              <StatCard
+                icon={<Activity />}
+                label="آنلاین"
+                value={onlineCount}
+                tone="green"
+              />
+              <StatCard
+                icon={<Map />}
+                label="دارای موقعیت"
+                value={locations.length}
+                tone="amber"
+              />
+            </section>
+            {history.driverId !== null && (
+              <HistoryTimeline
+                driverName={drivers.find((driver) => driver.id === history.driverId)?.fullName || "پیک بدون نام"}
+                days={history.days}
+                selectedDay={history.selectedDay}
+                range={history.range}
+                rangeActive={history.rangeActive}
+                loading={history.loading}
+                dayLoading={history.dayLoading}
+                error={history.error}
+                dayError={history.dayError}
+                pointCount={history.points.length}
+                onSelectDay={(day) => { void history.selectDay(day); }}
+                onRangeChange={history.changeRange}
+                onReset={history.resetRange}
+                onRetry={() => { if (history.driverId !== null) void fetchHistory(history.driverId); }}
+                onClose={history.close}
+              />
+            )}
+            <section className="map-card h-[calc(100vh_-_209px)] min-h-[540px] grid grid-cols-[minmax(0,_1fr)_310px] overflow-hidden [background:#fff] [border:1px_solid_#e4e8ef] rounded-[16px] [box-shadow:0_8px_28px_rgba(26,39,66,.055)] [@media(max-width:980px)]:h-[auto] [@media(max-width:980px)]:min-h-0 [@media(max-width:980px)]:grid-cols-[1fr]">
+              <div className="map-panel relative min-w-0 [@media(max-width:980px)]:h-[520px] [@media(max-width:640px)]:[&&]:h-[440px]">
+                <LiveMap
+                  locations={filteredLocations}
+                  history={history.points}
+                  historyLoading={history.loading || (history.rangeActive && history.dayLoading)}
+                  focusRequest={mapFocusRequest}
+                  selectedId={selectedId}
+                  onSelect={selectDriver}
+                  onHistoryRequest={fetchHistory}
+                  historyStatuses={history.statuses}
+                  places={places}
+                  selectedPlaceId={selectedPlaceId}
+                  placeFocusRequest={placeFocusRequest}
+                  onPlaceSelect={selectPlace}
+                />
+                <div className="map-legend absolute z-[500] left-[16px] bottom-[16px] flex gap-[12px] p-[9px_12px] text-[#596579] [background:rgba(255,255,255,.94)] [border:1px_solid_#e1e6ed] rounded-[8px] [box-shadow:0_4px_12px_rgba(19,31,54,.12)] text-[10px] [&_span]:flex [&_span]:items-center [&_span]:gap-[6px] [&_i]:w-[7px] [&_i]:h-[7px] [&_i]:rounded-[50%] [&_i]:[background:#94a3b8] [&_i.green-dot]:[background:#16a67b] [&_i.route-line-dot]:w-[38px] [&_i.route-line-dot]:h-[5px] [&_i.route-line-dot]:[background:linear-gradient(90deg,_#bfdbfe_0%,_#93c5fd_20%,_#60a5fa_40%,_#3b82f6_60%,_#2563eb_80%,_#1d4ed8_100%)] [&_i.route-line-dot]:rounded-[99px] [&_i.route-line-dot]:[box-shadow:0_0_0_1px_rgba(255,255,255,.9),_0_1px_3px_rgba(15,23,42,.18)] [&_i.place-dot]:[background:#6d4bc3]">
+                  <span>
+                    <i className="green-dot" /> آنلاین
+                  </span>
+                  <span>
+                    <i /> غیرفعال
+                  </span>
+                  <span>
+                    <i className="route-line-dot" /> مسیر انتخاب‌شده؛ قدیمی تا جدید
+                  </span>
+                  <span>
+                    <i className="place-dot" /> مکان ثابت
+                  </span>
+                </div>
+              </div>
+              <aside className="driver-panel min-w-0 min-h-0 flex flex-col [border-left:1px_solid_#e7eaf0] [@media(max-width:980px)]:h-[420px] [@media(max-width:980px)]:[border-top:1px_solid_#e7eaf0] [@media(max-width:980px)]:[border-left:0]">
+                <div className="panel-heading flex items-center justify-between p-[18px_17px_11px] [&_>_div]:flex [&_>_div]:items-center [&_>_div]:gap-[8px] [&_h2]:m-0 [&_h2]:text-[16px] [&_span]:p-[3px_7px] [&_span]:text-[#607086] [&_span]:[background:#edf0f5] [&_span]:rounded-[6px] [&_span]:text-[9px]">
+                  <div>
+                    <h2>پیک‌ها</h2>
+                    <span>
+                      {visibleDrivers.length.toLocaleString("fa-IR")} نفر
+                    </span>
+                  </div>
+                  <Button variant="icon" onClick={() => loadData()}>
+                    <RefreshCw size={17} />
+                  </Button>
+                </div>
+                <div className="search-box h-[40px] flex items-center gap-[8px] m-[0_16px_12px] p-[0_11px] text-[#9ba4b3] [background:#f7f8fa] [border:1px_solid_#e7e9ee] rounded-[9px] [&_input]:h-[auto] [&_input]:p-0 [&_input]:bg-transparent [&_input]:[border:0] [&_input]:[box-shadow:none] [&_input]:text-[11px]">
+                  <Search size={17} />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="جست‌وجوی نام یا شماره"
+                  />
+                </div>
+                <div className="driver-list min-h-0 [flex:1_1_auto] overflow-y-auto overscroll-contain [scrollbar-gutter:stable] p-[0_9px]">
+                  {visibleDrivers.map((driver) => (
+                    <DriverListItem
+                      key={driver.id}
+                      driver={driver}
+                      location={locationsByDriverId.get(driver.id)}
+                      selected={selectedId === driver.id}
+                      historyStatus={history.statuses[driver.id] ?? "idle"}
+                      onSelect={selectDriver}
+                      onHistoryRequest={(id) => {
+                        void fetchHistory(id);
+                      }}
+                      formatLocationTime={locationTime}
+                      isOnline={online}
+                    />
+                  ))}
+                  {!visibleDrivers.length && (
+                    <div className="empty-state p-[30px_12px] text-[#8b96a7] text-center text-[11px]">
+                      پیکی با این مشخصات پیدا نشد.
+                    </div>
+                  )}
+                </div>
+              </aside>
+            </section>
+          </>
+        ) : view === "places" ? (
+          <section
+            className={`map-card h-[calc(100vh_-_209px)] min-h-[540px] grid grid-cols-[minmax(0,_1fr)_310px] overflow-hidden [background:#fff] [border:1px_solid_#e4e8ef] rounded-[16px] [box-shadow:0_8px_28px_rgba(26,39,66,.055)] [@media(max-width:980px)]:h-[auto] [@media(max-width:980px)]:min-h-0 [@media(max-width:980px)]:grid-cols-[1fr] places-card [&.places-card]:h-[calc(100vh_-_123px)] [&.places-card.placing_.leaflet-container]:[cursor:crosshair] [@media(max-width:980px)]:[&.places-card]:h-[auto] ${placementMode ? "placing" : ""}`}
+          >
+            <div className="map-panel relative min-w-0 [@media(max-width:980px)]:h-[520px] [@media(max-width:640px)]:[&&]:h-[440px]">
+              <LiveMap
+                locations={[]}
+                selectedId={null}
+                onSelect={() => undefined}
+                places={visiblePlaces}
+                selectedPlaceId={selectedPlaceId}
+                placeFocusRequest={placeFocusRequest}
+                onPlaceSelect={selectPlace}
+                placementMode={placementMode}
+                draftCoordinates={draftCoordinates}
+                onMapClick={(latitude, longitude) =>
+                  setDraftCoordinates({ latitude, longitude })
+                }
+              />
+              {placementMode && !draftCoordinates && (
+                <div className="placement-hint absolute z-[500] top-[17px] left-[50%] flex items-center gap-[8px] p-[11px_15px] text-[#fff] [background:rgba(17,28,50,.92)] rounded-[10px] [box-shadow:0_7px_22px_rgba(15,23,42,.24)] text-[11px] [transform:translateX(-50%)] pointer-events-none [@media(max-width:640px)]:[&&]:w-[max-content] [@media(max-width:640px)]:[&&]:max-w-[calc(100%_-_32px)]">
+                  <MousePointer2 size={18} /> محل موردنظر را روی نقشه انتخاب
+                  کنید.
+                </div>
+              )}
+            </div>
+            <aside className="driver-panel min-w-0 min-h-0 flex flex-col [border-left:1px_solid_#e7eaf0] [@media(max-width:980px)]:h-[420px] [@media(max-width:980px)]:[border-top:1px_solid_#e7eaf0] [@media(max-width:980px)]:[border-left:0] places-panel">
+              <div className="panel-heading flex items-center justify-between p-[18px_17px_11px] [&_>_div]:flex [&_>_div]:items-center [&_>_div]:gap-[8px] [&_h2]:m-0 [&_h2]:text-[16px] [&_span]:p-[3px_7px] [&_span]:text-[#607086] [&_span]:[background:#edf0f5] [&_span]:rounded-[6px] [&_span]:text-[9px]">
+                <div>
+                  <h2>مکان‌ها</h2>
+                  <span>{places.length.toLocaleString("fa-IR")} مورد</span>
+                </div>
+                <Button
+                  variant="icon"
+                  onClick={() => loadData()}
+                  title="به‌روزرسانی"
+                >
+                  <RefreshCw size={17} />
+                </Button>
+              </div>
+              <button
+                className={`add-place-button min-h-[42px] flex items-center justify-center gap-[8px] m-[0_16px_12px] text-[#0f766e] [background:#eaf8f5] [border:1px_dashed_#79cabb] rounded-[10px] text-[11px] font-bold [&:hover]:text-[#fff] [&:hover]:[background:#0f766e] [&:hover]:[border-color:#0f766e] [&.active]:text-[#fff] [&.active]:[background:#0f766e] [&.active]:[border-color:#0f766e] ${placementMode ? "active" : ""}`}
+                onClick={startPlacement}
+              >
+                <Plus size={17} /> افزودن مکان از روی نقشه
+              </button>
+              <div className="search-box h-[40px] flex items-center gap-[8px] m-[0_16px_12px] p-[0_11px] text-[#9ba4b3] [background:#f7f8fa] [border:1px_solid_#e7e9ee] rounded-[9px] [&_input]:h-[auto] [&_input]:p-0 [&_input]:bg-transparent [&_input]:[border:0] [&_input]:[box-shadow:none] [&_input]:text-[11px]">
+                <Search size={17} />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="جست‌وجوی نام مکان"
+                />
+              </div>
+              <div className="driver-list min-h-0 [flex:1_1_auto] overflow-y-auto overscroll-contain [scrollbar-gutter:stable] p-[0_9px] place-list [&.place-list]:p-[0_9px_8px]">
+                {visiblePlaces.map((place) => (
+                  <div
+                    key={place.id}
+                    className={`place-item flex items-center gap-[4px] p-[5px] [border:1px_solid_transparent] rounded-[10px] [&:hover]:[background:#f8fafc] [&.selected.selected]:[background:#f1edfb] [&.selected.selected]:[border-color:#ddd2f5] ${selectedPlaceId === place.id ? "selected" : ""}`}
+                  >
+                    <button
+                      className="place-item-main min-w-0 flex-1 flex items-center gap-[10px] p-[5px] bg-transparent [border:0] text-right"
+                      onClick={() => selectPlace(place.id)}
+                    >
+                      <span className="place-avatar flex-none w-[34px] h-[34px] grid place-items-center text-[#6544ba] [background:#eee9fa] rounded-[10px]">
+                        <MapPinned size={17} />
+                      </span>
+                      <span className="driver-info min-w-0 flex flex-1 flex-col gap-[5px] [&_b]:overflow-hidden [&_b]:text-[#293448] [&_b]:text-[11px] [&_b]:whitespace-nowrap [&_b]:text-ellipsis [&_small]:text-[#8a95a6] [&_small]:text-[9px]">
+                        <b>{place.name}</b>
+                        <small dir="ltr">
+                          {Number(place.latitude).toFixed(5)},{" "}
+                          {Number(place.longitude).toFixed(5)}
+                        </small>
+                      </span>
+                    </button>
+                    <span className="place-actions flex gap-[1px] [&_button]:w-[30px] [&_button]:h-[30px] [&_button]:grid [&_button]:place-items-center [&_button]:p-0 [&_button]:text-[#667085] [&_button]:bg-transparent [&_button]:[border:0] [&_button]:rounded-[7px] [&_button:hover]:text-[#0f766e] [&_button:hover]:[background:#eaf8f5] [&_button.danger:hover]:text-[#b42318] [&_button.danger:hover]:[background:#fff0ef]">
+                      <button
+                        className="danger"
+                        onClick={() => deletePlace(place)}
+                        title="حذف"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </span>
+                  </div>
+                ))}
+                {!visiblePlaces.length && (
+                  <div className="empty-state p-[30px_12px] text-[#8b96a7] text-center text-[11px]">
+                    مکانی با این نام پیدا نشد.
+                  </div>
+                )}
+              </div>
+              {selectedPlace && (
+                <div className="selected-driver flex flex-col gap-[5px] m-[10px] p-[12px] text-[#526174] [background:#f7f9fc] [border:1px_solid_#e6eaf0] rounded-[10px] text-[9px] [&_b]:text-[#1c293c] [&_b]:text-[11px] [&_small]:text-[#8d97a7]">
+                  <span>مکان انتخاب‌شده</span>
+                  <b>{selectedPlace.name}</b>
+                  <small dir="ltr">
+                    {Number(selectedPlace.latitude).toFixed(7)},{" "}
+                    {Number(selectedPlace.longitude).toFixed(7)}
+                  </small>
+                </div>
+              )}
+            </aside>
+          </section>
+        ) : (
+          <section className="users-card p-[24px] [background:#fff] [border:1px_solid_#e4e8ef] rounded-[16px] [box-shadow:0_8px_28px_rgba(26,39,66,.045)] [&_table]:w-full [&_table]:border-collapse [&_table]:whitespace-nowrap [&_th]:p-[12px] [&_th]:text-[#8390a2] [&_th]:[background:#f8fafc] [&_th]:[border-bottom:1px_solid_#e8ecf2] [&_th]:text-[10px] [&_th]:text-right [&_td]:p-[13px_12px] [&_td]:text-[#4a5669] [&_td]:[border-bottom:1px_solid_#eef1f4] [&_td]:text-[11px] [@media(max-width:640px)]:[&&]:p-[17px]">
+            <div className="users-toolbar flex items-center justify-between gap-[16px] [&_h2]:m-[0_0_7px] [&_h2]:text-[18px] [&_p]:m-0 [&_p]:text-[#8490a2] [&_p]:text-[11px] [@media(max-width:640px)]:[&&]:items-start [@media(max-width:640px)]:[&&]:flex-col [@media(max-width:640px)]:[&&]:[&_.primary-button]:w-full">
+              <div>
+                <h2>کاربران سامانه</h2>
+                <p>حساب مدیران و پیک‌ها را مدیریت کنید.</p>
+              </div>
+              <Button variant="primary" onClick={() => setShowAddUser(true)}>
+                <Plus size={18} /> افزودن کاربر
+              </Button>
+            </div>
+            <div className="table-search [&.table-search]:w-[min(100%,_320px)] [&.table-search]:m-[25px_0_16px] [@media(max-width:640px)]:[&&]:[&.table-search]:w-full search-box h-[40px] flex items-center gap-[8px] m-[0_16px_12px] p-[0_11px] text-[#9ba4b3] [background:#f7f8fa] [border:1px_solid_#e7e9ee] rounded-[9px] [&_input]:h-[auto] [&_input]:p-0 [&_input]:bg-transparent [&_input]:[border:0] [&_input]:[box-shadow:none] [&_input]:text-[11px]">
+              <Search size={17} />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="جست‌وجوی کاربر"
+              />
+            </div>
+            <div className="users-table-wrap overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>کاربر</th>
+                    <th>شماره موبایل</th>
+                    <th>نقش</th>
+                    <th>وضعیت</th>
+                    <th>عملیات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users
+                    .filter((item) =>
+                      `${item.fullName || ""} ${item.phone}`.includes(
+                        search.trim(),
+                      ),
+                    )
+                    .map((item) => {
+                      const active =
+                        item.isActive === true || item.isActive === 1;
+                      const deleting = deletingUserIds.includes(item.id);
+                      return (
+                        <tr key={item.id}>
+                          <td>
+                            <div className="table-user flex items-center gap-[10px] [&_.avatar]:w-[31px] [&_.avatar]:h-[31px] [&_.avatar]:rounded-[9px] [&_b]:text-[#283448]">
+                              <Avatar>
+                                {(item.fullName || "ک").slice(0, 1)}
+                              </Avatar>
+                              <b>{item.fullName || "بدون نام"}</b>
+                            </div>
+                          </td>
+                          <td dir="ltr">{item.phone}</td>
+                          <td>
+                            <span
+                              className={`role-badge inline-flex items-center gap-[5px] p-[5px_8px] rounded-[7px] text-[9px] text-[#315c9d] [background:#eef4ff] [&.admin]:text-[#7750a1] [&.admin]:[background:#f5effb] ${item.role.toLowerCase()}`}
+                            >
+                              {item.role === "ADMIN" ? (
+                                <UserCog size={14} />
+                              ) : (
+                                <Truck size={14} />
+                              )}
+                              {item.role === "ADMIN" ? "مدیر" : "پیک"}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`status-badge inline-flex items-center gap-[5px] p-[5px_8px] rounded-[7px] text-[9px] text-[#8a5960] [background:#f6f0f1] [&_i]:w-[6px] [&_i]:h-[6px] [&_i]:rounded-[50%] [&_i]:[background:#a9868a] [&.active]:text-[#08785f] [&.active]:[background:#eaf9f4] [&.active_i]:[background:#16a37c] ${active ? "active" : ""}`}
+                            >
+                              <i />
+                              {active ? "فعال" : "غیرفعال"}
+                            </span>
+                          </td>
+                          <td>
+                            <Button
+                              variant="text"
+                              disabled={item.id === admin?.id || deleting}
+                              onClick={() => toggleStatus(item)}
+                            >
+                              {active ? "غیرفعال‌سازی" : "فعال‌سازی"}
+                            </Button>
+                            {item.role === "DRIVER" && (
+                              <Button
+                                variant="text"
+                                className="delete-user-button [&.delete-user-button]:mr-[4px] [&.delete-user-button]:text-[#b42318] [&.delete-user-button:hover]:[background:#fff0ef]"
+                                disabled={deleting}
+                                onClick={() => deleteUser(item)}
+                              >
+                                {deleting ? "در حال حذف…" : "حذف پیک"}
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+      </main>
+      {showAddUser && token && (
+        <AddUserModal
+          token={token}
+          onClose={() => setShowAddUser(false)}
+          onCreated={(newUser) => {
+            setUsers((current) => [newUser, ...current]);
+            setShowAddUser(false);
+          }}
+        />
+      )}
+      {token && draftCoordinates && (
+        <PlaceModal
+          token={token}
+          coordinates={draftCoordinates}
+          onClose={closePlaceModal}
+          onSaved={savePlace}
+        />
+      )}
+    </div>
+  );
 }

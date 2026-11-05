@@ -4,6 +4,7 @@ import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { emitLocationUpdate } from '../realtime.js';
+import { historyWindow, tehranDayKey, tehranDayStart } from '../utils/location-history.js';
 
 interface LocationRow extends RowDataPacket {
   id: number; userId: number; phone: string; fullName: string | null;
@@ -79,10 +80,46 @@ router.get('/latest', authenticate, authorize('ADMIN'), asyncHandler(async (_req
   res.json({ success: true, data: rows });
 }));
 
+router.get('/:userId/history/days', authenticate, authorize('ADMIN'), asyncHandler(async (req, res) => {
+  const userId = Number(req.params.userId);
+  if (!Number.isSafeInteger(userId) || userId <= 0) {
+    res.status(400).json({ success: false, message: 'شناسه پیک معتبر نیست' });
+    return;
+  }
+  const days: { date: string }[] = [];
+  const connection = await pool.getConnection();
+  try {
+    let before = new Date();
+    // Seek to the last record before each day instead of scanning/grouping the entire history.
+    // The (user_id, recorded_at) index keeps this bounded to ten short index lookups.
+    while (days.length < 10) {
+      const [rows] = await connection.execute<LocationRow[]>(
+        `SELECT l.recorded_at AS recordedAt FROM locations l
+         INNER JOIN users u ON u.id = l.user_id
+         WHERE l.user_id = ? AND u.role = 'DRIVER' AND l.recorded_at < ?
+         ORDER BY l.recorded_at DESC LIMIT 1`,
+        [userId, before],
+      );
+      if (!rows.length) break;
+      const date = tehranDayKey(rows[0].recordedAt);
+      days.push({ date });
+      before = tehranDayStart(date);
+    }
+  } finally {
+    connection.release();
+  }
+  res.json({ success: true, data: days });
+}));
+
 router.get('/:userId/history', authenticate, authorize('ADMIN'), asyncHandler(async (req, res) => {
   const userId = Number(req.params.userId);
   if (!Number.isSafeInteger(userId) || userId <= 0) {
     res.status(400).json({ success: false, message: 'شناسه پیک معتبر نیست' });
+    return;
+  }
+  const window = historyWindow(req.query.from, req.query.to);
+  if (!window) {
+    res.status(400).json({ success: false, message: 'بازه زمانی باید معتبر و حداکثر ۲۴ ساعت باشد' });
     return;
   }
   const [rows] = await pool.execute<LocationRow[]>(
@@ -90,9 +127,9 @@ router.get('/:userId/history', authenticate, authorize('ADMIN'), asyncHandler(as
             l.latitude, l.longitude, l.accuracy, l.recorded_at AS recordedAt
      FROM locations l INNER JOIN users u ON u.id = l.user_id
      WHERE l.user_id = ? AND u.role = 'DRIVER'
-       AND l.recorded_at >= ? AND l.recorded_at <= ?
+       AND l.recorded_at >= ? AND l.recorded_at < ?
      ORDER BY l.recorded_at ASC, l.id ASC`,
-    [userId, new Date(Date.now() - 24 * 60 * 60 * 1000), new Date()],
+    [userId, window.from, window.to],
   );
   res.json({ success: true, data: rows });
 }));
