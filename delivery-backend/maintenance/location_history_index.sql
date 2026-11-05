@@ -1,3 +1,5 @@
+-- Optional performance tuning, not a required application schema migration.
+-- Run manually after reviewing the query plan and scheduling the index build.
 -- Idempotent: reuse any existing index beginning with these two columns.
 SET @history_index_exists = (
   SELECT COUNT(*) FROM information_schema.statistics first_column
