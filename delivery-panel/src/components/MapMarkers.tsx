@@ -1,6 +1,7 @@
 import L from "leaflet";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DriverLocation, SavedPlace } from "../types";
+import { Building2, Plus } from 'lucide-react';
 
 const placeColors = [
   "[--place-color:#7c3aed]",
@@ -31,8 +32,8 @@ function PlaceMarker({
       <div className="place-marker-label max-w-[132px] h-[25px] absolute top-[0] flex items-center p-[0_10px] text-[#253047] [background:rgba(255,255,255,.96)] [border:1px_solid_color-mix(in_srgb,_var(--place-color)_28%,_#e3e7ee)] rounded-[8px] [box-shadow:0_3px_9px_rgba(15,23,42,.1)] [font:700_10px/1_'PeydaWebFaNum',_Tahoma,_Arial,_sans-serif] whitespace-nowrap [&_>_span]:block [&_>_span]:overflow-hidden [&_>_span]:text-ellipsis [&::after]:w-[7px] [&::after]:h-[7px] [&::after]:absolute [&::after]:right-[7px] [&::after]:bottom-[-5px] [&::after]:[content:''] [&::after]:[background:#fff] [&::after]:[border-right:1px_solid_color-mix(in_srgb,_var(--place-color)_28%,_#e3e7ee)] [&::after]:[border-bottom:1px_solid_color-mix(in_srgb,_var(--place-color)_28%,_#e3e7ee)] [&::after]:[transform:rotate(45deg)]">
         <span>{name}</span>
       </div>
-      <div className="place-marker-pin w-[32px] h-[32px] absolute bottom-[7px] grid place-items-center text-[#fff] [background:linear-gradient(145deg,_color-mix(in_srgb,_var(--place-color)_78%,_#fff),_var(--place-color))] [border:3px_solid_#fff] rounded-[50%_50%_50%_8px] [box-shadow:0_4px_10px_color-mix(in_srgb,_var(--place-color)_40%,_transparent)] [transform:rotate(-45deg)] [&_span]:[font:800_12px/1_'PeydaWebFaNum',_Tahoma,_Arial,_sans-serif] [&_span]:[transform:rotate(45deg)]">
-        <span>{draft ? "+" : Array.from(name.trim())[0] || "م"}</span>
+      <div className="place-marker-pin w-[36px] h-[36px] absolute bottom-[6px] grid place-items-center text-[#fff] [background:var(--place-color)] [border:3px_solid_#fff] rounded-[11px] [box-shadow:0_4px_10px_color-mix(in_srgb,_var(--place-color)_40%,_transparent)]">
+        {draft ? <Plus size={20} /> : <Building2 size={21} strokeWidth={2.2} />}
       </div>
       <div className="place-marker-shadow w-[18px] h-[5px] absolute bottom-[0] [background:rgba(15,23,42,.2)] rounded-[50%] [filter:blur(2px)]" />
     </div>
