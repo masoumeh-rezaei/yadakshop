@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.emitLocationUpdate = exports.initializeRealtime = void 0;
+exports.emitTasksChanged = exports.emitLocationUpdate = exports.initializeRealtime = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const socket_io_1 = require("socket.io");
 const database_js_1 = __importDefault(require("./config/database.js"));
@@ -40,3 +40,7 @@ const emitLocationUpdate = (location) => {
     io?.to('admins').emit('location:update', location);
 };
 exports.emitLocationUpdate = emitLocationUpdate;
+const emitTasksChanged = (change) => {
+    io?.to('admins').emit('tasks:changed', change);
+};
+exports.emitTasksChanged = emitTasksChanged;

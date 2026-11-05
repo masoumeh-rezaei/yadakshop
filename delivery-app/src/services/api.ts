@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import type { LoginResponse, User } from '@/types/auth';
+import type { DriverTask } from '@/types/task';
 
 const fallbackUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL || fallbackUrl).replace(/\/$/, '');
@@ -57,4 +58,17 @@ export const sendLocation = async (token: string, location: LocationPayload) => 
     body: JSON.stringify(location),
   });
   return parseResponse<{ success: true; data: { id: number; recordedAt: string } }>(response);
+};
+
+export const getMyTasks = async (token: string, signal?: AbortSignal): Promise<DriverTask[]> => {
+  const response = await fetch(`${API_URL}/api/tasks/mine`, { headers: { Authorization: `Bearer ${token}` }, signal });
+  return (await parseResponse<{ success: true; data: DriverTask[] }>(response)).data;
+};
+
+export const completeMyTask = async (token: string, task: DriverTask, signal?: AbortSignal): Promise<DriverTask> => {
+  const response = await fetch(`${API_URL}/api/tasks/${task.id}/complete`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revision: task.revision }), signal,
+  });
+  return (await parseResponse<{ success: true; data: DriverTask }>(response)).data;
 };

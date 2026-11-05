@@ -11,6 +11,11 @@ for app in delivery-backend delivery-panel; do
   rm -rf -- dist
   npm ci --ignore-scripts --no-audit --no-fund
   VITE_API_URL=https://peik.ydsp.ir npm run build
+  if [[ "$app" == delivery-backend ]]; then
+    node --test tests/*.test.cjs
+  else
+    node --experimental-strip-types --test tests/*.test.mjs
+  fi
 done
 cd "$root/delivery-backend"
 npm ci --omit=dev --ignore-scripts --no-audit --no-fund

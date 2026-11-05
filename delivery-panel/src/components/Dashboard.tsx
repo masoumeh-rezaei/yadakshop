@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   CircleUserRound,
+  ClipboardList,
   LogOut,
   Map,
   MapPinned,
@@ -24,7 +25,7 @@ import {
 import { io } from "socket.io-client";
 import { api, API_URL, ApiError } from "../api";
 import { useAuth } from "../auth";
-import type { DriverLocation, SavedPlace, User } from "../types";
+import type { DriverLocation, DriverTask, SavedPlace, User } from "../types";
 import { AddUserModal } from "./AddUserModal";
 import { DriverListItem } from "./DriverListItem";
 import { HistoryTimeline } from "./HistoryTimeline";
@@ -33,8 +34,10 @@ import { LiveMap } from "./LiveMap";
 import { PlaceModal } from "./PlaceModal";
 import { MapLegend } from "./MapLegend";
 import { UserManagementPanel } from "./UserManagementPanel";
+import { useTasks } from '../hooks/useTasks';
+import { TasksPage } from './TasksPage';
 
-type View = "map" | "places" | "users";
+type View = "map" | "places" | "users" | "tasks";
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
 const locationTime = (date: string) => {
@@ -60,6 +63,7 @@ export function Dashboard() {
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<DriverLocation[]>([]);
   const history = useDriverHistory(token, logout);
+  const taskState = useTasks(token, logout);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
@@ -131,6 +135,7 @@ export function Dashboard() {
     socket.on("connect", () => setConnection("connected"));
     socket.on("disconnect", () => setConnection("disconnected"));
     socket.on("connect_error", () => setConnection("disconnected"));
+    socket.on('tasks:changed', () => { void taskState.refresh(); });
     socket.on("location:update", (location: DriverLocation) => {
       setLocations((current) => [
         location,
@@ -144,7 +149,7 @@ export function Dashboard() {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [token, history.appendLocation]);
+  }, [token, history.appendLocation, taskState.refresh]);
   useEffect(() => {
     const timer = window.setInterval(() => loadData(true), 30_000);
     return () => window.clearInterval(timer);
@@ -210,6 +215,21 @@ export function Dashboard() {
     setSelectedPlaceId(id);
     setPlaceFocusRequest((current) => current + 1);
   }, []);
+  // A pin click opens its selector in place; only sidebar selections move the camera.
+  const selectDriverMarker = useCallback((id: number) => {
+    setMapFocusRequest(0);
+    setPlaceFocusRequest(0);
+    setSelectedId(id);
+    setSelectedPlaceId(null);
+    history.close();
+  }, [history.close]);
+  const selectPlaceMarker = useCallback((id: number) => {
+    setMapFocusRequest(0);
+    setPlaceFocusRequest(0);
+    setSelectedPlaceId(id);
+    setSelectedId(null);
+    history.close();
+  }, [history.close]);
   // Reframe after a settled range change so dragging stays responsive.
   useEffect(() => {
     if (!history.rangeActive || history.dayLoading) return;
@@ -296,6 +316,16 @@ export function Dashboard() {
     selectPlace(saved.id);
     closePlaceModal();
   };
+  const assignmentControls = {
+    tasks: taskState.tasks, drivers, places, loading: taskState.loading,
+    error: taskState.error, pending: taskState.pending, onAssign: taskState.assign,
+  };
+  const showTaskPlace = (task: DriverTask) => {
+    changeView('map');
+    setSelectedId(null);
+    setSelectedPlaceId(task.placeId);
+    setPlaceFocusRequest(1);
+  };
 
   const historyPanel = history.driverId !== null ? (
     <HistoryTimeline
@@ -375,6 +405,10 @@ export function Dashboard() {
             <Users size={19} />
             <span>مدیریت کاربران</span>
           </button>
+          <button className={view === 'tasks' ? 'active' : ''} onClick={() => changeView('tasks')}>
+            <ClipboardList size={19} /><span>وظایف</span>
+            <small className="task-nav-count">{taskState.tasks.filter((task) => task.status === 'pending').length.toLocaleString('fa-IR')}</small>
+          </button>
         </nav>
         <div className="sidebar-system mt-auto flex items-center gap-[10px] p-[14px_11px] [border:1px_solid_rgba(255,255,255,.07)] rounded-[11px] [background:rgba(255,255,255,.025)] [&_>_span]:w-[9px] [&_>_span]:h-[9px] [&_>_span]:rounded-[50%] [&_>_span]:[background:#ef8354] [&_>_span.ok]:[background:#4cdda6] [&_>_span.ok]:[box-shadow:0_0_0_5px_rgba(76,221,166,.08)] [&_div]:min-w-0 [&_div]:flex [&_div]:flex-1 [&_div]:flex-col [&_div]:gap-[4px] [&_b]:text-[#dce4f0] [&_b]:text-[11px] [&_small]:text-[#78879e] [&_small]:text-[9px]">
           <span className={connection === "connected" ? "ok" : ""} />
@@ -408,7 +442,7 @@ export function Dashboard() {
                 ? "نقشه زنده پیک‌ها"
                 : view === "places"
                   ? "مدیریت مکان‌ها"
-                  : "مدیریت کاربران"}
+                  : view === 'tasks' ? 'مدیریت وظایف' : "مدیریت کاربران"}
             </h1>
           </div>
           <div
@@ -467,6 +501,9 @@ export function Dashboard() {
                   focusTarget={mapFocusTarget}
                   selectedId={selectedId}
                   onSelect={selectDriver}
+                  onMarkerSelect={selectDriverMarker}
+                  onPlaceMarkerSelect={selectPlaceMarker}
+                  assignments={assignmentControls}
                   onHistoryRequest={fetchHistory}
                   historyStatuses={history.statuses}
                   places={places}
@@ -531,6 +568,8 @@ export function Dashboard() {
                 locations={[]}
                 selectedId={null}
                 onSelect={() => undefined}
+                onPlaceMarkerSelect={selectPlaceMarker}
+                assignments={assignmentControls}
                 places={visiblePlaces}
                 selectedPlaceId={selectedPlaceId}
                 placeFocusRequest={placeFocusRequest}
@@ -619,6 +658,11 @@ export function Dashboard() {
               )}
             </aside>
           </section>
+        ) : view === 'tasks' ? (
+          <TasksPage tasks={taskState.tasks} loading={taskState.loading} error={taskState.error}
+            pending={taskState.pending} onRefresh={() => { void taskState.refresh(); }}
+            onComplete={taskState.complete} onCancel={(task) => { void taskState.assign(task.driverId, task.placeId, false); }}
+            onShowPlace={showTaskPlace} />
         ) : (
           <>
             {historyPanel}
@@ -633,6 +677,8 @@ export function Dashboard() {
                   focusTarget={mapFocusTarget}
                   selectedId={selectedId}
                   onSelect={selectDriver}
+                  onMarkerSelect={selectDriverMarker}
+                  assignments={assignmentControls}
                   onHistoryRequest={fetchHistory}
                   historyStatuses={history.statuses}
                 />

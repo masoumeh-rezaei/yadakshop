@@ -46,3 +46,25 @@ All maps provide zoom controls up to level 22, with native map tiles through lev
 Coordinate numbers are omitted from map popups, saved-place details, and the place form. Place creation retains the selected map coordinates internally. Shared navigation lives in `LiveMap` and `utils/mapMotion`; the compact account UI is in `UserManagementPanel`, with scoped layout styles in `styles.css`.
 
 When checking map changes in a browser, cover overlapping courier selection, zooming to 22, account search without hiding couriers, account actions, saved-place creation, switching all three map views, mobile page overflow, reduced motion, and the existing history/date slider.
+
+## Assignments and tasks
+
+Clicking a saved-place pin opens courier checkboxes; clicking a courier pin opens
+saved-place checkboxes. Both update the same server-side pair and show pending
+writes/errors without creating duplicate tasks. The Tasks page lists pending
+and completed assignments, supports completion/cancellation, and can focus the
+saved place on the live map. Cancelled tasks are hidden; completed pairs can be
+assigned again from a pin selector.
+
+Pin clicks stop an existing camera animation and open their popup in place.
+Sidebar selections still move the camera. Marker icons and position tuples are
+memoized, preventing popup writes and task refreshes from replacing marker DOM.
+Popup auto-pan is independent of camera focus and only keeps the box in view.
+Saved places now use a building marker distinct from courier pins.
+
+The Vite build includes both `index.html` and `driver-map.html`. Publish the
+entire `dist` output so the native app can load its dedicated map entry point.
+The task map page has no task API access or token; it accepts coordinate/name
+data from the authenticated app, validates it, and inserts names as text.
+Tasks require the real database migration documented in
+[`TASKS.md`](../delivery-backend/TASKS.md); build output alone cannot persist them.

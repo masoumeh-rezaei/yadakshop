@@ -39,3 +39,19 @@ export interface LoginResult {
   token: string;
   user: User;
 }
+
+export interface DriverTask {
+  id: number;
+  driverId: number;
+  driverName: string | null;
+  driverPhone: string;
+  placeId: number;
+  placeName: string;
+  latitude: number | string;
+  longitude: number | string;
+  status: 'pending' | 'completed' | 'cancelled';
+  revision: number;
+  assignedAt: string;
+  completedAt: string | null;
+  updatedAt: string;
+}

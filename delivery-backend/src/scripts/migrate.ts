@@ -7,9 +7,14 @@ import { env } from '../config/env.js';
 const migrationsDirectory = resolve(process.cwd(), 'migrations');
 
 const run = async () => {
-  const files = (await readdir(migrationsDirectory))
+  const available = (await readdir(migrationsDirectory))
     .filter((file) => /^\d+_.+\.sql$/.test(file))
     .sort((left, right) => left.localeCompare(right));
+  const requested = process.argv.slice(2);
+  if (requested.length > 1 || (requested[0] && !available.includes(requested[0]))) {
+    throw new Error('Pass one exact migration filename from the migrations directory, or omit it to run all files.');
+  }
+  const files = requested[0] ? [requested[0]] : available;
 
   if (!files.length) {
     console.log('No migration files found.');
