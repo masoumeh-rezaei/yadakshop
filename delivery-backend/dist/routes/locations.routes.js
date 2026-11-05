@@ -77,7 +77,8 @@ router.get('/:userId/history/days', auth_js_1.authenticate, (0, auth_js_1.author
     try {
         let before = new Date();
         // Seek to the last record before each day instead of scanning/grouping the entire history.
-        // The (user_id, recorded_at) index keeps this bounded to ten short index lookups.
+        // An existing (user_id, recorded_at) index makes these seeks efficient;
+        // the endpoint also works without it and never creates indexes at runtime.
         while (days.length < 10) {
             const [rows] = await connection.execute(`SELECT l.recorded_at AS recordedAt FROM locations l
          INNER JOIN users u ON u.id = l.user_id

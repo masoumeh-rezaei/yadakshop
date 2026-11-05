@@ -27,7 +27,7 @@ Click a courier on the map or in the list to open the history panel above the ma
 
 The map initially shows the rolling last 24 hours. Selecting a day opens a two-handle slider from noon to midnight; moving a handle or choosing “نمایش این بازه” applies that day's range. Each day is fetched once on selection and range changes filter locally. “۲۴ ساعت گذشته” restores the rolling default. The existing route simplification and chronological light-to-dark blue colors are retained.
 
-Deploy the matching backend endpoints and apply [`002_location_history_index.sql`](../delivery-backend/migrations/002_location_history_index.sql) for indexed day lookups. Timeline layout and native range-input styles are scoped in `styles.css`.
+Deploy the matching backend endpoints. The history feature uses the existing database schema and requires no new migration. For large location histories, review the [optional index maintenance procedure](../delivery-backend/maintenance/README.md). Timeline layout and native range-input styles are scoped in `styles.css`.
 
 Regression checks (Node.js 22.18+):
 
