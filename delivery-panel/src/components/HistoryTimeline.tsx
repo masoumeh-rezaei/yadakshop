@@ -1,5 +1,5 @@
 import { CalendarDays, Check, Clock3, History, LoaderCircle, RotateCcw, X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import { scrollToMapSection } from '../utils/mapMotion';
 import type { HistoryDay } from '../types';
 import { formatHistoryDay, formatHistoryTime, historyDayDate, type TimeRange } from '../utils/historyTime';
@@ -17,6 +17,7 @@ interface Props {
   pointCount: number;
   onSelectDay: (date: string) => void;
   onRangeChange: (range: TimeRange) => void;
+  onRangeCommit: (range: TimeRange) => void;
   onReset: () => void;
   onRetry: () => void;
   onClose: () => void;
@@ -33,6 +34,64 @@ const formatMonthYear = (date: Date) => {
 export function HistoryTimeline(props: Props) {
   const { days, selectedDay, range, rangeActive, loading, dayLoading, error, dayError } = props;
   const panelRef = useRef<HTMLElement>(null);
+  const latestRange = useRef(range);
+  const onCommit = useRef(props.onRangeCommit);
+  const interaction = useRef({ pointer: false, keyboard: false, dirty: false, timer: 0 });
+  latestRange.current = range;
+  onCommit.current = props.onRangeCommit;
+  const cancelCommit = () => window.clearTimeout(interaction.current.timer);
+  const commitRange = () => {
+    cancelCommit();
+    if (!interaction.current.dirty) return;
+    interaction.current.dirty = false;
+    onCommit.current([...latestRange.current]);
+  };
+  const settleRange = () => {
+    cancelCommit();
+    interaction.current.timer = window.setTimeout(commitRange, 250);
+  };
+  const previewRange = (next: TimeRange) => {
+    latestRange.current = next;
+    interaction.current.dirty = true;
+    props.onRangeChange(next);
+    // Accessibility/native changes without a pointer or keyboard gesture still settle.
+    if (!interaction.current.pointer && !interaction.current.keyboard) settleRange();
+  };
+  const finishPointer = () => {
+    interaction.current.pointer = false;
+    commitRange();
+  };
+  const inputEvents = {
+    onPointerDown: (event: PointerEvent<HTMLInputElement>) => {
+      cancelCommit();
+      interaction.current.pointer = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    onPointerUp: finishPointer,
+    onPointerCancel: finishPointer,
+    onLostPointerCapture: finishPointer,
+    onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) return;
+      cancelCommit();
+      interaction.current.keyboard = true;
+    },
+    onKeyUp: () => {
+      interaction.current.keyboard = false;
+      if (interaction.current.dirty) settleRange();
+    },
+    onBlur: () => {
+      interaction.current.pointer = false;
+      interaction.current.keyboard = false;
+      if (interaction.current.dirty) settleRange();
+    },
+  };
+  useEffect(() => {
+    const current = interaction.current;
+    current.pointer = false;
+    current.keyboard = false;
+    current.dirty = false;
+    return () => window.clearTimeout(current.timer);
+  }, [selectedDay]);
   useEffect(() => {
     scrollToMapSection(panelRef.current);
   }, [props.driverName, selectedDay]);
@@ -80,14 +139,14 @@ export function HistoryTimeline(props: Props) {
         <div className={`history-range ${disabled ? 'disabled' : ''}`} dir="ltr">
           <div className="history-range-track" />
           <div className="history-range-selection" style={{ left: `${startPercent}%`, right: `${100 - endPercent}%` }} />
-          <input type="range" min={720} max={1440} step={1} value={range[0]} disabled={disabled}
+          <input {...inputEvents} type="range" min={720} max={1440} step={1} value={range[0]} disabled={disabled}
             aria-valuemax={range[1] - 1}
             aria-label="ساعت شروع مسیر" aria-valuetext={`${formatHistoryTime(range[0])} به وقت تهران`}
-            onChange={(event) => props.onRangeChange([Math.min(Number(event.target.value), range[1] - 1), range[1]])} />
-          <input type="range" min={720} max={1440} step={1} value={range[1]} disabled={disabled}
+            onChange={(event) => previewRange([Math.min(Number(event.target.value), range[1] - 1), range[1]])} />
+          <input {...inputEvents} type="range" min={720} max={1440} step={1} value={range[1]} disabled={disabled}
             aria-valuemin={range[0] + 1}
             aria-label="ساعت پایان مسیر" aria-valuetext={`${formatHistoryTime(range[1])} به وقت تهران`}
-            onChange={(event) => props.onRangeChange([range[0], Math.max(Number(event.target.value), range[0] + 1)])} />
+            onChange={(event) => previewRange([range[0], Math.max(Number(event.target.value), range[0] + 1)])} />
         </div>
         <div className="history-range-ticks" dir="ltr">
           {[720, 900, 1080, 1260, 1440].map((minute) => <span key={minute}>{formatHistoryTime(minute)}</span>)}
@@ -97,7 +156,7 @@ export function HistoryTimeline(props: Props) {
             : dayError ? <span role="alert" className="history-range-error">{dayError} <button type="button" onClick={() => props.onSelectDay(selectedDay)}>تلاش مجدد</button></span>
             : !rangeActive ? <span>با تغییر بازه، مسیر این روز روی نقشه نمایش داده می‌شود.</span>
             : <span role="status">{props.pointCount ? 'مسیر بازهٔ انتخاب‌شده روی نقشه نمایش داده می‌شود.' : 'در این بازهٔ زمانی موقعیتی ثبت نشده است.'}</span>}
-          {!rangeActive && !disabled && <button type="button" className="history-apply" onClick={() => props.onRangeChange([...range])}>نمایش این بازه</button>}
+          {!rangeActive && !disabled && <button type="button" className="history-apply" onClick={() => props.onRangeCommit([...range])}>نمایش این بازه</button>}
         </div>
       </div>}
 
