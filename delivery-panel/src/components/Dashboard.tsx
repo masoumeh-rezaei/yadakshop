@@ -34,6 +34,7 @@ import { LiveMap } from "./LiveMap";
 import { PlaceModal } from "./PlaceModal";
 import { MapLegend } from "./MapLegend";
 import { UserManagementPanel } from "./UserManagementPanel";
+import { filterHistoryRange, type TimeRange } from '../utils/historyTime';
 import { useTasks } from '../hooks/useTasks';
 import { TasksPage } from './TasksPage';
 
@@ -68,6 +69,12 @@ export function Dashboard() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
   const [mapFocusTarget, setMapFocusTarget] = useState<"driver" | "history">("driver");
+  const [rangeFocus, setRangeFocus] = useState<{
+    driverId: number; day: string; points: DriverLocation[];
+  } | null>(null);
+  useEffect(() => {
+    if (!history.rangeActive) setRangeFocus(null);
+  }, [history.driverId, history.selectedDay, history.rangeActive]);
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
   const [placeFocusRequest, setPlaceFocusRequest] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -317,9 +324,22 @@ export function Dashboard() {
     setSelectedPlaceId(task.placeId);
     setPlaceFocusRequest(1);
   };
+  const commitHistoryRange = (range: TimeRange) => {
+    if (history.driverId === null || !history.selectedDay || history.dayLoading || history.dayError) return;
+    history.changeRange(range);
+    setRangeFocus({
+      driverId: history.driverId, day: history.selectedDay,
+      // Freeze the committed range independently of deferred preview rendering and live updates.
+      points: filterHistoryRange(history.dayPoints, history.selectedDay, range),
+    });
+  };
+  const focusedRangePoints = rangeFocus && history.rangeActive &&
+    rangeFocus.driverId === history.driverId && rangeFocus.day === history.selectedDay
+    ? rangeFocus.points : null;
 
   const historyPanel = history.driverId !== null ? (
     <HistoryTimeline
+      key={history.driverId}
       driverName={drivers.find((driver) => driver.id === history.driverId)?.fullName || "پیک بدون نام"}
       days={history.days}
       selectedDay={history.selectedDay}
@@ -332,6 +352,7 @@ export function Dashboard() {
       pointCount={history.points.length}
       onSelectDay={(day) => { void history.selectDay(day); }}
       onRangeChange={history.changeRange}
+      onRangeCommit={commitHistoryRange}
       onReset={() => {
         history.resetRange();
         setMapFocusTarget("history");
@@ -487,6 +508,7 @@ export function Dashboard() {
                   key="live-map"
                   locations={filteredLocations}
                   history={history.points}
+                  historyRangeFocus={focusedRangePoints}
                   historyLoading={history.loading || (history.rangeActive && history.dayLoading)}
                   focusRequest={mapFocusRequest}
                   focusTarget={mapFocusTarget}
@@ -663,6 +685,7 @@ export function Dashboard() {
                   key="users-map"
                   locations={driverLocations}
                   history={history.points}
+                  historyRangeFocus={focusedRangePoints}
                   historyLoading={history.loading || (history.rangeActive && history.dayLoading)}
                   focusRequest={mapFocusRequest}
                   focusTarget={mapFocusTarget}
