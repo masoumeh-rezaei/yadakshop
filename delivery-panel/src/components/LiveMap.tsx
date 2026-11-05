@@ -148,6 +148,26 @@ function FocusSelectedPlace({
   return null;
 }
 
+function FocusHistoryRange({ points }: { points: DriverLocation[] | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (points === null) return;
+    const route = prepareRouteHistory(points);
+    map.stop();
+    // Empty intervals keep the current view instead of falling back to the courier pin.
+    if (!route.length) return;
+    const bounds = L.latLngBounds(route.map((point) => [point.latitude, point.longitude]));
+    const zoom = Math.min(18, map.getBoundsZoom(bounds, false, L.point(96, 96)));
+    const center = map.unproject(
+      map.project(bounds.getSouthWest(), zoom).add(map.project(bounds.getNorthEast(), zoom)).divideBy(2), zoom,
+    );
+    const centerOffset = map.project(map.getCenter(), zoom).distanceTo(map.project(center, zoom));
+    if (Math.abs(map.getZoom() - zoom) < 0.01 && centerOffset < 1) return;
+    map.flyTo(center, zoom, { animate: !prefersReducedMotion(), duration: 0.55 });
+  }, [points, map]);
+  return null;
+}
+
 function MapClickHandler({
   enabled,
   onClick,
@@ -237,6 +257,7 @@ function SavedPlaceMarker({ place, selected, onSelect, assignments }: {
 interface Props {
   locations: DriverLocation[];
   history?: DriverLocation[];
+  historyRangeFocus?: DriverLocation[] | null;
   historyLoading?: boolean;
   focusRequest?: number;
   focusTarget?: "driver" | "history";
@@ -259,6 +280,7 @@ interface Props {
 export function LiveMap({
   locations,
   history = [],
+  historyRangeFocus = null,
   historyLoading = false,
   focusRequest = 0,
   focusTarget = "driver",
@@ -339,6 +361,7 @@ export function LiveMap({
         focusTarget={focusTarget}
       />
       <FocusSelectedPlace place={selectedPlace} request={placeFocusRequest} />
+      <FocusHistoryRange points={historyRangeFocus} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
       <DismissPopupOnOutsidePress />
       <RouteHistoryLayer points={route} />

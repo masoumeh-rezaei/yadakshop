@@ -41,7 +41,7 @@ Backend routing and authorization checks use an isolated database stub. From `de
 
 Account management uses the shared `LiveMap` beside a compact, scrollable account table. The map includes every available courier position, regardless of the table's search, and omits saved places and administrator positions. Administrators remain manageable in the table; accounts without a recorded position have an explicit empty-location label. The layout stacks the map above the table on narrower screens.
 
-All maps provide zoom controls up to level 22, with native map tiles through level 19 and overzoom above that. Selecting a courier or saved place animates the camera and raises that marker above overlapping pins. Normal courier selection focuses the pin immediately, while an explicit history action frames the route. Time-range changes preserve the current center and zoom. Page scrolling and map movement respect reduced-motion preferences. Switching pages resets focus requests so each map can initially show its full set of positions.
+All maps provide zoom controls up to level 22, with native map tiles through level 19 and overzoom above that. Selecting a courier or saved place animates the camera and raises that marker above overlapping pins. Normal courier selection focuses the pin immediately, while an explicit history action frames the route. Time-range changes preview the route immediately and frame the selected interval after the gesture finishes. Page scrolling and map movement respect reduced-motion preferences. Switching pages resets focus requests so each map can initially show its full set of positions.
 
 Coordinate numbers are omitted from map popups, saved-place details, and the place form. Place creation retains the selected map coordinates internally. Shared navigation lives in `LiveMap` and `utils/mapMotion`; the compact account UI is in `UserManagementPanel`, with scoped layout styles in `styles.css`.
 
@@ -79,6 +79,10 @@ entry points and all assets; no schema change is needed for this panel release.
 Assignment popups close on a pointer press anywhere outside their content,
 including outside the map. Controls inside the popup remain interactive; the
 document listener exists only while a popup is open and is removed on map
-unmount. Timeline range edits update only the route while preserving the map's
-center and zoom. Explicit history requests and sidebar navigation still focus
-the map as before.
+unmount. Timeline range edits preview only the route while a pointer or held key
+is active. Pointer release commits once; keyboard and accessibility changes
+settle for 250 ms. The camera uses a snapshot of the committed interval, so
+deferred previews and live updates cannot restart its animation. Compact ranges
+zoom in up to level 18; wider ranges zoom out to fit. Empty ranges keep the view,
+and an already matching view does not animate again. Marker elements/icons remain
+stable. Explicit history requests and sidebar navigation retain their focus.
