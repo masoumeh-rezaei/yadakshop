@@ -81,6 +81,60 @@
 }
 
 @layer components {
+  .users-map-card { height: calc(100vh - 123px); min-height: 580px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 400px); overflow: hidden; background: #fff; border: 1px solid #e4e8ef; border-radius: 16px; box-shadow: 0 8px 28px #1a27420e; }
+  .users-map-panel { position: relative; min-width: 0; min-height: 0; }
+  .users-map-heading { position: absolute; top: 16px; right: 16px; z-index: 500; display: flex; align-items: center; gap: 9px; padding: 9px 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fffffff0; box-shadow: 0 3px 12px #0f172a0d; color: #0f766e; font-size: 12px; pointer-events: none; }
+  .users-map-heading span { color: #94a3b8; font-size: 10px; }
+  .user-management-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid #e7eaf0; background: #fff; }
+  .user-management-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 20px 15px 14px; }
+  .user-management-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; color: #1e293b; }
+  .user-management-heading h2 span { padding: 3px 6px; border-radius: 6px; background: #f1f5f9; color: #64748b; font-size: 10px; }
+  .user-management-heading p { margin: 7px 0 0; color: #94a3b8; font-size: 10px; }
+  .user-management-heading .user-add-button { min-height: 34px; padding: 0 10px; gap: 4px; border-radius: 8px; font-size: 11px; box-shadow: none; }
+  .user-management-search { display: flex; align-items: center; gap: 7px; margin: 0 15px 14px; padding: 0 10px; border: 1px solid #e7e9ee; border-radius: 9px; background: #f8fafc; color: #94a3b8; }
+  .user-management-search input { min-width: 0; height: 38px; padding: 0; border: 0; background: transparent; box-shadow: none; font-size: 11px; }
+  .user-management-table-wrap { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  .user-management-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+  .user-management-table th { position: sticky; top: 0; z-index: 1; padding: 10px 8px; border-block: 1px solid #edf0f5; background: #f8fafc; color: #94a3b8; text-align: right; font-size: 10px; font-weight: 500; }
+  .user-management-table th:first-child { width: 56%; padding-right: 15px; }
+  .user-management-table th:nth-child(2) { width: 20%; }
+  .user-management-table th:last-child { width: 24%; }
+  .user-management-table td { padding: 10px 7px; border-bottom: 1px solid #f0f3f7; vertical-align: middle; transition: background .2s; }
+  .user-management-table td:first-child { padding-right: 12px; }
+  .user-management-table tr:hover td { background: #f8fbfc; }
+  .user-management-table tr.selected td { background: #eef9f6; }
+  .user-management-table tr.selected td:first-child { box-shadow: inset -3px 0 #14a383; }
+  .user-select-button { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 3px 0; border: 0; border-radius: 6px; background: transparent; text-align: right; }
+  .user-select-button .avatar { flex: none; width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
+  .user-identity { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+  .user-identity b { overflow: hidden; color: #334155; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .user-identity small { align-self: flex-start; color: #94a3b8; font-size: 10px; }
+  .user-identity em { color: #94a3b8; font-size: 9px; font-style: normal; }
+  .user-location-icon { flex: none; color: #14a383; }
+  .user-role { display: inline-flex; align-items: center; gap: 4px; color: #3b82f6; font-size: 10px; }
+  .user-role.admin { color: #8b5cf6; }
+  .user-account-status { display: flex; align-items: center; gap: 4px; margin-top: 6px; color: #94a3b8; font-size: 9px; white-space: nowrap; }
+  .user-account-status i { width: 5px; height: 5px; border-radius: 50%; background: #cbd5e1; }
+  .user-account-status.active { color: #0f9475; }
+  .user-account-status.active i { background: #14a383; }
+  .user-row-actions { display: flex; align-items: center; gap: 2px; }
+  .user-row-actions button { display: grid; flex: none; place-items: center; width: 29px; height: 31px; padding: 0; border: 1px solid #edf0f5; border-radius: 8px; background: #fff; color: #94a3b8; transition: color .2s, background .2s; }
+  .user-row-actions button:hover { color: #b45309; background: #fffbeb; }
+  .user-row-actions .activate:hover { color: #0f766e; background: #ecfdf5; }
+  .user-row-actions .delete:hover { color: #dc2626; background: #fff1f2; }
+  .user-row-actions button:disabled { opacity: .4; cursor: not-allowed; }
+  .user-management-footer { display: flex; align-items: center; gap: 6px; padding: 13px 15px; border-top: 1px solid #edf0f5; color: #94a3b8; font-size: 10px; }
+  .user-management-empty { padding: 30px 12px; color: #94a3b8; text-align: center; font-size: 11px; }
+  .user-management-panel button:focus-visible { outline: 2px solid #5eead4; outline-offset: 3px; }
+  @media (max-width: 1180px) {
+    .users-map-card { height: auto; min-height: 0; grid-template-columns: 1fr; }
+    .users-map-panel { height: 480px; }
+    .user-management-panel { max-height: 530px; border-left: 0; border-top: 1px solid #e7eaf0; }
+    .user-management-table th:first-child { width: 55%; }
+    .user-management-table th:nth-child(2) { width: 20%; }
+    .user-management-table th:last-child { width: 25%; }
+  }
+  @media (max-width: 640px) { .users-map-panel { height: 430px; } }
   .history-timeline {
     margin-bottom: 16px;
     padding: 18px 20px 12px;

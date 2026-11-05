@@ -15,8 +15,6 @@ interface Props {
 
 export function PlaceModal({ token, coordinates, onClose, onSaved }: Props) {
   const [name, setName] = useState("");
-  const [latitude, setLatitude] = useState(String(coordinates.latitude));
-  const [longitude, setLongitude] = useState(String(coordinates.longitude));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -28,8 +26,8 @@ export function PlaceModal({ token, coordinates, onClose, onSaved }: Props) {
     event.preventDefault();
     const input = {
       name: name.trim(),
-      latitude: Number(latitude),
-      longitude: Number(longitude),
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
     };
     if (!input.name) {
       setError("نام مکان را وارد کنید.");
@@ -79,28 +77,9 @@ export function PlaceModal({ token, coordinates, onClose, onSaved }: Props) {
           onChange={(event) => setName(event.target.value)}
           placeholder="مثلاً فروشگاه مرکزی"
         />
-        <div className="coordinate-fields grid grid-cols-[1fr_1fr] gap-[12px] [&_input]:text-left [@media(max-width:640px)]:[&&]:grid-cols-[1fr] [@media(max-width:640px)]:[&&]:gap-[0]">
-          <div>
-            <Label htmlFor="place-latitude">عرض جغرافیایی</Label>
-            <Input
-              id="place-latitude"
-              dir="ltr"
-              inputMode="decimal"
-              value={latitude}
-              onChange={(event) => setLatitude(event.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="place-longitude">طول جغرافیایی</Label>
-            <Input
-              id="place-longitude"
-              dir="ltr"
-              inputMode="decimal"
-              value={longitude}
-              onChange={(event) => setLongitude(event.target.value)}
-            />
-          </div>
-        </div>
+        <p className="flex items-center gap-[7px] text-[12px] text-[#64748b]">
+          <MapPin size={15} /> موقعیت از پین انتخاب‌شده روی نقشه دریافت شد.
+        </p>
         {error && (
           <div className="form-error text-[#b42318] [background:#fff1f0] [border:1px_solid_#ffd4d0] rounded-[10px] p-[11px_13px] m-[2px_0_12px] text-[13px]">
             {error}

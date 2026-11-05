@@ -36,3 +36,13 @@ node --test tests/historyTime.test.mjs
 ```
 
 Backend routing and authorization checks use an isolated database stub. From `delivery-backend`, run `npm run build` followed by `node --test tests/location-history.test.cjs`.
+
+## Account management map and navigation
+
+Account management uses the shared `LiveMap` beside a compact, scrollable account table. The map includes every available courier position, regardless of the table's search, and omits saved places and administrator positions. Administrators remain manageable in the table; accounts without a recorded position have an explicit empty-location label. The layout stacks the map above the table on narrower screens.
+
+All maps provide zoom controls up to level 22, with native map tiles through level 19 and overzoom above that. Selecting a courier or saved place animates the camera and raises that marker above overlapping pins. Normal courier selection focuses the pin immediately, while an explicit history action or time-range change frames the route. Page scrolling and map movement respect reduced-motion preferences. Switching pages resets focus requests so each map can initially show its full set of positions.
+
+Coordinate numbers are omitted from map popups, saved-place details, and the place form. Place creation retains the selected map coordinates internally. Shared navigation lives in `LiveMap` and `utils/mapMotion`; the compact account UI is in `UserManagementPanel`, with scoped layout styles in `styles.css`.
+
+When checking map changes in a browser, cover overlapping courier selection, zooming to 22, account search without hiding couriers, account actions, saved-place creation, switching all three map views, mobile page overflow, reduced motion, and the existing history/date slider.

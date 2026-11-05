@@ -8,6 +8,7 @@ import {
   TileLayer,
   useMap,
   useMapEvents,
+  ZoomControl,
 } from "react-leaflet";
 import type { DriverLocation, SavedPlace } from "../types";
 import { prepareRouteHistory, type RoutePoint } from "../utils/routeHistory";
@@ -17,10 +18,13 @@ import {
   type HistoryRequestResult,
 } from "./HistoryActionButton";
 import { RouteHistoryLayer } from "./RouteHistoryLayer";
+import { prefersReducedMotion } from "../utils/mapMotion";
 
 const defaultCenter: [number, number] = [35.6892, 51.389];
 const SELECTED_LOCATION_ZOOM = 18;
 const HISTORY_MAX_ZOOM = 16;
+const MAP_MAX_ZOOM = 22;
+const SELECTED_MARKER_Z_INDEX = 10_000_000;
 
 function DriverPopupHistory({
   driverId,
@@ -76,17 +80,19 @@ function FocusSelectedDriver({
   history,
   request,
   loading,
+  focusTarget,
 }: {
   location: DriverLocation | null;
   history: RoutePoint[];
   request: number;
   loading: boolean;
+  focusTarget: "driver" | "history";
 }) {
   const map = useMap();
   const handledRequest = useRef(0);
   useEffect(() => {
-    if (!request || loading || handledRequest.current === request) return;
-    const points = history.length ? history : location ? [location] : [];
+    if (!request || (loading && focusTarget === "history") || handledRequest.current === request) return;
+    const points = focusTarget === "history" && history.length ? history : location ? [location] : [];
     if (!points.length) return;
 
     handledRequest.current = request;
@@ -94,22 +100,25 @@ function FocusSelectedDriver({
       points.map((item) => [Number(item.latitude), Number(item.longitude)]),
     );
     map.stop();
+    const animate = !prefersReducedMotion();
     if (
       points.length === 1 ||
       bounds.getNorthEast().equals(bounds.getSouthWest())
     ) {
-      map.setView(bounds.getCenter(), SELECTED_LOCATION_ZOOM, {
-        animate: false,
+      map.flyTo(bounds.getCenter(), Math.max(map.getZoom(), SELECTED_LOCATION_ZOOM), {
+        animate,
+        duration: 0.85,
       });
       return;
     }
-    map.fitBounds(bounds, {
+    map.flyToBounds(bounds, {
       paddingTopLeft: [48, 48],
       paddingBottomRight: [48, 48],
       maxZoom: HISTORY_MAX_ZOOM,
-      animate: false,
+      animate,
+      duration: 0.85,
     });
-  }, [request, loading, location, history, map]);
+  }, [request, loading, location, history, focusTarget, map]);
   return null;
 }
 
@@ -126,10 +135,10 @@ function FocusSelectedPlace({
     if (!place || !request || handledRequest.current === request) return;
     handledRequest.current = request;
     map.stop();
-    map.setView(
+    map.flyTo(
       [Number(place.latitude), Number(place.longitude)],
-      SELECTED_LOCATION_ZOOM,
-      { animate: false },
+      Math.max(map.getZoom(), SELECTED_LOCATION_ZOOM),
+      { animate: !prefersReducedMotion(), duration: 0.85 },
     );
   }, [place, request, map]);
   return null;
@@ -155,6 +164,7 @@ interface Props {
   history?: DriverLocation[];
   historyLoading?: boolean;
   focusRequest?: number;
+  focusTarget?: "driver" | "history";
   selectedId: number | null;
   onSelect: (id: number) => void;
   onHistoryRequest?: (id: number) => Promise<HistoryRequestResult>;
@@ -173,6 +183,7 @@ export function LiveMap({
   history = [],
   historyLoading = false,
   focusRequest = 0,
+  focusTarget = "driver",
   selectedId,
   onSelect,
   onHistoryRequest,
@@ -190,7 +201,9 @@ export function LiveMap({
       locations.filter(
         (item) =>
           Number.isFinite(Number(item.latitude)) &&
-          Number.isFinite(Number(item.longitude)),
+          Number.isFinite(Number(item.longitude)) &&
+          Number(item.latitude) >= -90 && Number(item.latitude) <= 90 &&
+          Number(item.longitude) >= -180 && Number(item.longitude) <= 180,
       ),
     [locations],
   );
@@ -225,19 +238,24 @@ export function LiveMap({
     <MapContainer
       center={defaultCenter}
       zoom={12}
+      maxZoom={MAP_MAX_ZOOM}
       zoomControl={false}
       className="map font-sans w-full h-full [background:#e7ecef]"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        maxNativeZoom={19}
+        maxZoom={MAP_MAX_ZOOM}
       />
+      <ZoomControl position="topleft" zoomInTitle="بزرگ‌نمایی" zoomOutTitle="کوچک‌نمایی" />
       <FitInitialLocations locations={validLocations} places={places} />
       <FocusSelectedDriver
         location={selectedLocation}
         history={route}
         request={focusRequest}
         loading={historyLoading}
+        focusTarget={focusTarget}
       />
       <FocusSelectedPlace place={selectedPlace} request={placeFocusRequest} />
       <MapClickHandler enabled={placementMode} onClick={onMapClick} />
@@ -247,6 +265,9 @@ export function LiveMap({
           key={location.userId}
           position={[Number(location.latitude), Number(location.longitude)]}
           icon={driverIcon(location, selectedId === location.userId)}
+          zIndexOffset={selectedId === location.userId ? SELECTED_MARKER_Z_INDEX : 0}
+          title={location.fullName || "پیک بدون نام"}
+          alt={location.fullName || "پیک بدون نام"}
           eventHandlers={{ click: () => onSelect(location.userId) }}
         >
           <Popup autoPan={false}>
@@ -273,15 +294,11 @@ export function LiveMap({
           key={`place-${place.id}`}
           position={[Number(place.latitude), Number(place.longitude)]}
           icon={placeIcon(place, selectedPlaceId === place.id)}
+          zIndexOffset={selectedPlaceId === place.id ? SELECTED_MARKER_Z_INDEX : 0}
           eventHandlers={{ click: () => onPlaceSelect?.(place.id) }}
         >
           <Popup>
             <strong>{place.name}</strong>
-            <br />
-            <small dir="ltr">
-              {Number(place.latitude).toFixed(6)},{" "}
-              {Number(place.longitude).toFixed(6)}
-            </small>
           </Popup>
         </Marker>
       ))}
