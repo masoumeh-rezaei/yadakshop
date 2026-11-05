@@ -75,3 +75,10 @@ keeping the map and account/place management usable. The task list does not
 present an unavailable service as an empty result. Periodic refresh and the
 retry action enable assignments once the service is ready. Publish both HTML
 entry points and all assets; no schema change is needed for this panel release.
+
+Assignment popups close on a pointer press anywhere outside their content,
+including outside the map. Controls inside the popup remain interactive; the
+document listener exists only while a popup is open and is removed on map
+unmount. Timeline range edits update only the route while preserving the map's
+center and zoom. Explicit history requests and sidebar navigation still focus
+the map as before.
