@@ -230,15 +230,6 @@ export function Dashboard() {
     setSelectedId(null);
     history.close();
   }, [history.close]);
-  // Reframe after a settled range change so dragging stays responsive.
-  useEffect(() => {
-    if (!history.rangeActive || history.dayLoading) return;
-    const timer = window.setTimeout(() => {
-      setMapFocusTarget("history");
-      setMapFocusRequest((current) => current + 1);
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [history.dayLoading, history.rangeActive, history.range]);
   const changeView = (next: View) => {
     history.close();
     setMapFocusRequest(0);
