@@ -26,25 +26,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
-    // در شروع برنامه، توکن ذخیره‌شده با سرور اعتبارسنجی می‌شود؛ وجود محلی آن به‌تنهایی کافی نیست.
-    tokenStorage.get()
-      .then(async (storedToken) => {
+    // نشست ذخیره‌شده فوراً بازیابی و سپس در پس‌زمینه با سرور اعتبارسنجی می‌شود.
+    const restoreSession = async () => {
+      try {
+        const [storedToken, storedUser] = await Promise.all([
+          tokenStorage.get(),
+          tokenStorage.getUser(),
+        ]);
         if (!storedToken) return;
-        const currentUser = await getCurrentUser(storedToken);
+
+        // Restore the last verified identity immediately. A temporary network
+        // outage must not turn into a logout or block the app at startup.
         if (mounted) {
           setToken(storedToken);
-          setUser(currentUser);
+          setUser(storedUser);
+          if (storedUser) setIsLoading(false);
         }
-      })
-      .catch(async () => tokenStorage.remove())
-      .finally(() => { if (mounted) setIsLoading(false); });
+
+        try {
+          const currentUser = await getCurrentUser(storedToken);
+          await tokenStorage.setUser(currentUser);
+          if (mounted) setUser(currentUser);
+        } catch (error) {
+          // Only a definitive authentication rejection invalidates the local
+          // session. Timeouts, offline starts and server errors keep it intact.
+          if (error instanceof ApiError && error.status === 401) {
+            await tokenStorage.remove();
+            if (mounted) {
+              setToken(null);
+              setUser(null);
+            }
+          }
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    restoreSession().catch(() => {
+      if (mounted) setIsLoading(false);
+    });
     return () => { mounted = false; };
   }, []);
 
   const login = useCallback(async (phone: string, password: string) => {
     try {
       const response = await loginRequest(phone, password);
-      await tokenStorage.set(response.data.token);
+      await tokenStorage.setSession(response.data.token, response.data.user);
       setToken(response.data.token);
       setUser(response.data.user);
     } catch (error) {

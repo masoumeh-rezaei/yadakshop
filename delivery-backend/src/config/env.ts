@@ -14,7 +14,7 @@ export const env = {
   dbPassword: process.env.DB_PASSWORD || '',
   dbName: required('DB_NAME'),
   jwtSecret: required('JWT_SECRET'),
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '365d',
   corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173')
     .split(',')
     .map((origin) => origin.trim())
