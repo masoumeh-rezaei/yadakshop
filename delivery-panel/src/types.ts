@@ -21,6 +21,11 @@ export interface DriverLocation {
   recordedAt: string;
 }
 
+export interface HistoryDay {
+  /** Gregorian day key in Asia/Tehran; displayed with the Persian calendar. */
+  date: string;
+}
+
 export interface SavedPlace {
   id: number;
   name: string;
@@ -33,4 +38,20 @@ export interface SavedPlace {
 export interface LoginResult {
   token: string;
   user: User;
+}
+
+export interface DriverTask {
+  id: number;
+  driverId: number;
+  driverName: string | null;
+  driverPhone: string;
+  placeId: number;
+  placeName: string;
+  latitude: number | string;
+  longitude: number | string;
+  status: 'pending' | 'completed' | 'cancelled';
+  revision: number;
+  assignedAt: string;
+  completedAt: string | null;
+  updatedAt: string;
 }

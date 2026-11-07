@@ -79,6 +79,14 @@ This command records a review; it executes no SQL. Code rollback cannot undo a
 database change. Do not automate restoration of a live database during code
 rollback.
 
+The courier history feature uses the existing database schema. Its optional
+index tuning script is documented in `delivery-backend/maintenance/README.md`
+and is not a required migration or included in the application artifact. Moving
+this performance-only operation out of required migrations restores the same
+migration fingerprint as the pre-history release. Database latency should be
+assessed separately for large location tables. Required migration changes still
+stop deployment for manual schema review.
+
 The original service definition and a baseline release are retained. The
 original backend directory remains available for recovery. Deployment helper
 changes in this directory require a separate reviewed server installation;

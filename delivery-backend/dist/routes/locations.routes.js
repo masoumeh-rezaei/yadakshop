@@ -8,6 +8,7 @@ const database_js_1 = __importDefault(require("../config/database.js"));
 const auth_js_1 = require("../middleware/auth.js");
 const async_handler_js_1 = require("../utils/async-handler.js");
 const realtime_js_1 = require("../realtime.js");
+const location_history_js_1 = require("../utils/location-history.js");
 const router = (0, express_1.Router)();
 router.post('/', auth_js_1.authenticate, (0, auth_js_1.authorize)('DRIVER'), (0, async_handler_js_1.asyncHandler)(async (req, res) => {
     const latitude = Number(req.body.latitude);
@@ -65,18 +66,53 @@ router.get('/latest', auth_js_1.authenticate, (0, auth_js_1.authorize)('ADMIN'),
      WHERE u.role = 'DRIVER' AND u.is_active = 1 ORDER BY l.recorded_at DESC`);
     res.json({ success: true, data: rows });
 }));
+router.get('/:userId/history/days', auth_js_1.authenticate, (0, auth_js_1.authorize)('ADMIN'), (0, async_handler_js_1.asyncHandler)(async (req, res) => {
+    const userId = Number(req.params.userId);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+        res.status(400).json({ success: false, message: 'شناسه پیک معتبر نیست' });
+        return;
+    }
+    const days = [];
+    const connection = await database_js_1.default.getConnection();
+    try {
+        let before = new Date();
+        // Seek to the last record before each day instead of scanning/grouping the entire history.
+        // An existing (user_id, recorded_at) index makes these seeks efficient;
+        // the endpoint also works without it and never creates indexes at runtime.
+        while (days.length < 10) {
+            const [rows] = await connection.execute(`SELECT l.recorded_at AS recordedAt FROM locations l
+         INNER JOIN users u ON u.id = l.user_id
+         WHERE l.user_id = ? AND u.role = 'DRIVER' AND l.recorded_at < ?
+         ORDER BY l.recorded_at DESC LIMIT 1`, [userId, before]);
+            if (!rows.length)
+                break;
+            const date = (0, location_history_js_1.tehranDayKey)(rows[0].recordedAt);
+            days.push({ date });
+            before = (0, location_history_js_1.tehranDayStart)(date);
+        }
+    }
+    finally {
+        connection.release();
+    }
+    res.json({ success: true, data: days });
+}));
 router.get('/:userId/history', auth_js_1.authenticate, (0, auth_js_1.authorize)('ADMIN'), (0, async_handler_js_1.asyncHandler)(async (req, res) => {
     const userId = Number(req.params.userId);
     if (!Number.isSafeInteger(userId) || userId <= 0) {
         res.status(400).json({ success: false, message: 'شناسه پیک معتبر نیست' });
         return;
     }
+    const window = (0, location_history_js_1.historyWindow)(req.query.from, req.query.to);
+    if (!window) {
+        res.status(400).json({ success: false, message: 'بازه زمانی باید معتبر و حداکثر ۲۴ ساعت باشد' });
+        return;
+    }
     const [rows] = await database_js_1.default.execute(`SELECT l.id, l.user_id AS userId, u.phone, u.full_name AS fullName,
             l.latitude, l.longitude, l.accuracy, l.recorded_at AS recordedAt
      FROM locations l INNER JOIN users u ON u.id = l.user_id
      WHERE l.user_id = ? AND u.role = 'DRIVER'
-       AND l.recorded_at >= ? AND l.recorded_at <= ?
-     ORDER BY l.recorded_at ASC, l.id ASC`, [userId, new Date(Date.now() - 24 * 60 * 60 * 1000), new Date()]);
+       AND l.recorded_at >= ? AND l.recorded_at < ?
+     ORDER BY l.recorded_at ASC, l.id ASC`, [userId, window.from, window.to]);
     res.json({ success: true, data: rows });
 }));
 exports.default = router;

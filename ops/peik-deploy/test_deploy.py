@@ -56,6 +56,41 @@ class ArtifactSecurity(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, self.assertRaises(ValueError):
             deploy.unpack_artifact(archive(VALID[:-1]), Path(directory))
 
+class MigrationReviewSecurity(unittest.TestCase):
+    def test_optional_maintenance_does_not_change_required_migration_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            backend = Path(directory)
+            required = backend / 'migrations'
+            required.mkdir()
+            (required / '001_existing.sql').write_text('CREATE TABLE existing_table (id INT);')
+            baseline = deploy.migration_digest(backend)
+            maintenance = backend / 'maintenance'
+            maintenance.mkdir()
+            (maintenance / 'optional_index.sql').write_text('CREATE INDEX optional_index ON existing_table (id);')
+            self.assertEqual(deploy.migration_digest(backend), baseline)
+            (required / '002_required.sql').write_text('ALTER TABLE existing_table ADD name VARCHAR(100);')
+            self.assertNotEqual(deploy.migration_digest(backend), baseline)
+
+    def test_changed_required_migration_still_stops_before_candidate_or_activation(self):
+        sha = 'b' * 40
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory)
+            migrations = release / 'backend/migrations'
+            migrations.mkdir(parents=True)
+            (migrations / '002_required.sql').write_text('ALTER TABLE locations ADD example INT;')
+            state = {'migration_digest': 'previous-schema-fingerprint'}
+            with patch.object(deploy, 'read_state', return_value=state), \
+                 patch.object(deploy, 'remote_sha', return_value=sha), \
+                 patch.object(deploy, 'atomic_json'), \
+                 patch.object(deploy, 'receive_artifact', return_value=release), \
+                 patch.object(deploy, 'candidate_check') as candidate, \
+                 patch.object(deploy, 'activate') as activate, \
+                 patch.object(deploy, 'log'):
+                with self.assertRaisesRegex(RuntimeError, 'manual database review required'):
+                    deploy.receive(sha)
+                candidate.assert_not_called()
+                activate.assert_not_called()
+
 class TransactionSecurity(unittest.TestCase):
     def test_disconnected_ssh_cannot_break_coordinator_logging(self):
         with patch('builtins.print', side_effect=BrokenPipeError), \
