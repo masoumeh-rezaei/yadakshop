@@ -12,6 +12,18 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 15_000;
+
+const fetchWithTimeout = async (input: string, init?: RequestInit) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 const parseResponse = async <T>(response: Response): Promise<T> => {
   const body = await response.json().catch(() => null) as ApiErrorBody | T | null;
   if (!response.ok) {
@@ -24,7 +36,7 @@ const parseResponse = async <T>(response: Response): Promise<T> => {
 };
 
 export const loginRequest = async (phone: string, password: string) => {
-  const response = await fetch(`${API_URL}/api/auth/login`, {
+  const response = await fetchWithTimeout(`${API_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, password }),
@@ -33,7 +45,7 @@ export const loginRequest = async (phone: string, password: string) => {
 };
 
 export const getCurrentUser = async (token: string): Promise<User> => {
-  const response = await fetch(`${API_URL}/api/auth/me`, {
+  const response = await fetchWithTimeout(`${API_URL}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const body = await parseResponse<{ success: true; data: User }>(response);
@@ -48,7 +60,7 @@ export interface LocationPayload {
 }
 
 export const sendLocation = async (token: string, location: LocationPayload) => {
-  const response = await fetch(`${API_URL}/api/locations`, {
+  const response = await fetchWithTimeout(`${API_URL}/api/locations`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,

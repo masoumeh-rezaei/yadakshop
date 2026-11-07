@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import {
@@ -26,6 +26,7 @@ import {
 
 export default function HomeScreen() {
   const { user, token, isLoading, login, logout } = useAuth();
+  const passwordInputRef = useRef<TextInput>(null);
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -207,23 +208,33 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.page}>
-      <KeyboardAvoidingView style={styles.center} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.card}>
-          <Text style={styles.eyebrow}>سامانه مدیریت ارسال</Text>
-          <Text style={styles.title}>ورود به حساب</Text>
-          <Text style={styles.subtitle}>برای شروع فعالیت، اطلاعات حساب خود را وارد کنید.</Text>
-          <Text style={styles.label}>شماره موبایل</Text>
-          <TextInput style={styles.input} placeholder="09123456789" placeholderTextColor="#94a3b8" value={phone}
-            onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" textAlign="right" editable={!submitting} />
-          <Text style={styles.label}>رمز عبور</Text>
-          <TextInput style={styles.input} placeholder="رمز عبور" placeholderTextColor="#94a3b8" value={password}
-            onChangeText={setPassword} secureTextEntry textAlign="right" editable={!submitting} onSubmitEditing={handleLogin} />
-          {!!error && <Text style={styles.error}>{error}</Text>}
-          <TouchableOpacity style={[styles.button, submitting && styles.buttonDisabled]} onPress={handleLogin} disabled={submitting}>
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>ورود</Text>}
-          </TouchableOpacity>
-          {__DEV__ && <Text style={styles.devHint}>API: {API_URL}</Text>}
-        </View>
+      <KeyboardAvoidingView style={styles.loginKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          contentContainerStyle={styles.loginScrollContent}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.card}>
+            <Text style={styles.eyebrow}>سامانه مدیریت ارسال</Text>
+            <Text style={styles.title}>ورود به حساب</Text>
+            <Text style={styles.subtitle}>برای شروع فعالیت، اطلاعات حساب خود را وارد کنید.</Text>
+            <Text style={styles.label}>شماره موبایل</Text>
+            <TextInput style={styles.input} placeholder="09123456789" placeholderTextColor="#94a3b8" value={phone}
+              onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" textAlign="right"
+              editable={!submitting} autoFocus returnKeyType="next" submitBehavior="submit"
+              onSubmitEditing={() => passwordInputRef.current?.focus()} />
+            <Text style={styles.label}>رمز عبور</Text>
+            <TextInput ref={passwordInputRef} style={styles.input} placeholder="رمز عبور"
+              placeholderTextColor="#94a3b8" value={password} onChangeText={setPassword} secureTextEntry
+              autoComplete="current-password" textAlign="right" editable={!submitting} returnKeyType="done"
+              onSubmitEditing={handleLogin} />
+            {!!error && <Text style={styles.error}>{error}</Text>}
+            <TouchableOpacity style={[styles.button, submitting && styles.buttonDisabled]} onPress={handleLogin} disabled={submitting}>
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>ورود</Text>}
+            </TouchableOpacity>
+            {__DEV__ && <Text style={styles.devHint}>API: {API_URL}</Text>}
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -232,6 +243,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#f1f5f9' },
   center: { flex: 1, justifyContent: 'center', padding: 20 },
+  loginKeyboard: { flex: 1 },
+  loginScrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingVertical: 32 },
   card: { backgroundColor: '#fff', borderRadius: 22, padding: 24, elevation: 4, shadowColor: '#0f172a', shadowOpacity: 0.08, shadowRadius: 20 },
   eyebrow: { color: '#2563eb', textAlign: 'center', fontWeight: '700', marginBottom: 10 },
   title: { color: '#0f172a', fontSize: 28, fontWeight: '800', textAlign: 'center' },
