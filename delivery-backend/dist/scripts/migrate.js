@@ -9,9 +9,14 @@ const promise_1 = __importDefault(require("mysql2/promise"));
 const env_js_1 = require("../config/env.js");
 const migrationsDirectory = (0, node_path_1.resolve)(process.cwd(), 'migrations');
 const run = async () => {
-    const files = (await (0, promises_1.readdir)(migrationsDirectory))
+    const available = (await (0, promises_1.readdir)(migrationsDirectory))
         .filter((file) => /^\d+_.+\.sql$/.test(file))
         .sort((left, right) => left.localeCompare(right));
+    const requested = process.argv.slice(2);
+    if (requested.length > 1 || (requested[0] && !available.includes(requested[0]))) {
+        throw new Error('Pass one exact migration filename from the migrations directory, or omit it to run all files.');
+    }
+    const files = requested[0] ? [requested[0]] : available;
     if (!files.length) {
         console.log('No migration files found.');
         return;

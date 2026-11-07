@@ -8,6 +8,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_js_1 = __importDefault(require("../config/database.js"));
 const auth_js_1 = require("../middleware/auth.js");
 const async_handler_js_1 = require("../utils/async-handler.js");
+const realtime_js_1 = require("../realtime.js");
 const router = (0, express_1.Router)();
 router.use(auth_js_1.authenticate, (0, auth_js_1.authorize)('ADMIN'));
 router.get('/', (0, async_handler_js_1.asyncHandler)(async (_req, res) => {
@@ -95,6 +96,7 @@ router.delete('/:id', (0, async_handler_js_1.asyncHandler)(async (req, res) => {
             return;
         }
         await connection.commit();
+        (0, realtime_js_1.emitTasksChanged)({ driverId: id });
         res.status(204).send();
     }
     catch (error) {

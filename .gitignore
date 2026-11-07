@@ -7,3 +7,10 @@
 **/.env.*.local
 *.log
 *.tsbuildinfo
+
+# Generated local release archives and machine-specific build profiles
+/artifacts/
+
+# Python deployment-test bytecode
+__pycache__/
+*.py[cod]

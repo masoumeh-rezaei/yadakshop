@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useAuth } from '@/contexts/auth-context';
 import { API_URL } from '@/services/api';
+import { DriverTasks } from '@/components/DriverTasks';
 import {
   isBackgroundTrackingActive,
   reconcileUserRequestedStop,
@@ -159,6 +160,9 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.page}>
         <ScrollView contentContainerStyle={styles.dashboardContent}>
+          {user.role === 'DRIVER' && token && <DriverTasks key={user.id} token={token} userId={user.id}
+            currentLocation={lastLocation ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude } : null}
+            onUnauthorized={() => { void handleLogout(); }} />}
           <View style={styles.dashboardCard}>
             <View style={[styles.statusDot, !isTracking && styles.statusDotInactive]} />
             <Text style={styles.welcome}>خوش آمدید</Text>
@@ -181,8 +185,7 @@ export default function HomeScreen() {
                 <Text style={styles.locationStatus}>{locationStatus}</Text>
                 {lastLocation && (
                   <View style={styles.coordinates}>
-                    <Text style={styles.coordinateText}>عرض: {lastLocation.coords.latitude.toFixed(6)}</Text>
-                    <Text style={styles.coordinateText}>طول: {lastLocation.coords.longitude.toFixed(6)}</Text>
+                    <Text style={styles.coordinateText}>آخرین موقعیت شما در نقشه مشخص شده است.</Text>
                     <Text style={styles.accuracyText}>دقت: {Math.round(lastLocation.coords.accuracy ?? 0)} متر</Text>
                   </View>
                 )}
@@ -196,7 +199,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
             )}
-            {user.role === 'ADMIN' && <Text style={styles.nextStep}>پنل مدیریتی در نسخه وب ساخته خواهد شد.</Text>}
+            {user.role === 'ADMIN' && <Text style={styles.nextStep}>مدیریت پیک‌ها و وظایف از پنل وب در دسترس است.</Text>}
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
               <Text style={styles.logoutText}>خروج از حساب</Text>
             </TouchableOpacity>

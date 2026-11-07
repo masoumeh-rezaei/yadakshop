@@ -3,6 +3,7 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { emitTasksChanged } from '../realtime.js';
 
 interface PlaceRow extends RowDataPacket {
   id: number;
@@ -69,6 +70,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
     return;
   }
   res.json({ success: true, data: { id, ...place, updatedAt: new Date().toISOString() } });
+  emitTasksChanged({ placeId: id });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {
@@ -83,6 +85,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     return;
   }
   res.status(204).send();
+  emitTasksChanged({ placeId: id });
 }));
 
 export default router;

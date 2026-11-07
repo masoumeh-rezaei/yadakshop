@@ -57,3 +57,7 @@ export const emitLocationUpdate = (location: RealtimeLocation) => {
   // room باعث می‌شود اطلاعات مکانی فقط برای پنل‌های مدیر broadcast شود.
   io?.to('admins').emit('location:update', location);
 };
+
+export const emitTasksChanged = (change: { driverId?: number; placeId?: number }) => {
+  io?.to('admins').emit('tasks:changed', change);
+};
