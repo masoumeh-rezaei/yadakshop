@@ -1,4 +1,4 @@
-import { Building2, Check, CheckCheck, ClipboardList, Clock3, LoaderCircle, MapPin, RefreshCw, Search, Truck, X } from 'lucide-react';
+import { Building2, CheckCheck, ClipboardList, Clock3, LoaderCircle, MapPin, RefreshCw, Search, Truck, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { DriverTask } from '../types';
 import { assignmentKey } from '../hooks/useTasks';
@@ -9,7 +9,6 @@ interface Props {
   error: string;
   pending: ReadonlySet<string>;
   onRefresh: () => void;
-  onComplete: (task: DriverTask) => void;
   onCancel: (task: DriverTask) => void;
   onShowPlace: (task: DriverTask) => void;
 }
@@ -19,7 +18,7 @@ export function TasksPage(props: Props) {
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('pending');
   const remaining = props.tasks.filter((task) => task.status === 'pending').length;
   const visible = useMemo(() => props.tasks.filter((task) => (filter === 'all' || task.status === filter) &&
-    `${task.driverName || ''} ${task.driverPhone} ${task.placeName}`.toLocaleLowerCase('fa-IR').includes(search.trim().toLocaleLowerCase('fa-IR'))), [props.tasks, filter, search]);
+    `${task.driverName || ''} ${task.driverPhone} ${task.placeName} ${task.description || ''}`.toLocaleLowerCase('fa-IR').includes(search.trim().toLocaleLowerCase('fa-IR'))), [props.tasks, filter, search]);
   return <section className="tasks-page" aria-label="مدیریت وظایف">
     <div className="tasks-summary"><span className="tasks-summary-icon"><ClipboardList size={25} /></span><div><h2>وظایف پیک‌ها</h2><p>تخصیص‌ها را از روی پین پیک یا مکان روی نقشه مدیریت کنید.</p></div><b>{remaining.toLocaleString('fa-IR')} <small>در انتظار انجام</small></b></div>
     <div className="tasks-toolbar"><div className="task-filters" role="group" aria-label="وضعیت وظایف">{(['pending', 'completed', 'all'] as const).map((value) => <button type="button" key={value} className={filter === value ? 'active' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === 'pending' ? 'در انتظار' : value === 'completed' ? 'انجام‌شده' : 'همه'}</button>)}</div>
@@ -34,8 +33,9 @@ export function TasksPage(props: Props) {
         return <article key={task.id} className={`task-card ${done ? 'completed' : ''}`}>
           <div className="task-card-top"><span className="task-place-icon"><Building2 size={22} /></span><div><h3>{task.placeName}</h3><span className={`task-status ${done ? 'done' : ''}`}>{done ? <CheckCheck size={13} /> : <Clock3 size={13} />}{done ? 'انجام‌شده' : 'در انتظار انجام'}</span></div></div>
           <div className="task-driver"><Truck size={16} /><b>{task.driverName || 'پیک بدون نام'}</b><span dir="ltr">{task.driverPhone}</span></div>
+          {task.description && <p className="task-description">{task.description}</p>}
           <div className="task-assigned-at">{done ? 'انجام: ' : 'تخصیص: '}{new Date(done ? task.completedAt || task.updatedAt : task.assignedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-          <div className="task-actions"><button type="button" onClick={() => props.onShowPlace(task)}><MapPin size={14} /> نمایش مکان</button>{!done && <><button type="button" className="task-complete" disabled={busy} onClick={() => props.onComplete(task)}>{busy ? <LoaderCircle size={14} className="animate-spin" /> : <Check size={14} />} انجام شد</button><button type="button" className="task-cancel" disabled={busy} aria-label={`لغو وظیفه ${task.placeName} برای ${task.driverName || task.driverPhone}`} onClick={() => props.onCancel(task)}><X size={14} /></button></>}</div>
+          <div className="task-actions"><button type="button" onClick={() => props.onShowPlace(task)}><MapPin size={14} /> نمایش مکان</button>{!done && <button type="button" className="task-cancel" disabled={busy} aria-label={`لغو وظیفه ${task.placeName} برای ${task.driverName || task.driverPhone}`} onClick={() => props.onCancel(task)}>{busy ? <LoaderCircle size={14} className="animate-spin" /> : <X size={14} />}</button>}</div>
         </article>;
       })}</div>}
   </section>;

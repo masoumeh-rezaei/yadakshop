@@ -39,6 +39,7 @@ export function DriverTasks({ token, userId, currentLocation, onUnauthorized }: 
             <TouchableOpacity disabled={done} style={styles.destination} onPress={() => selectTask(task.id)} accessibilityLabel={`نمایش ${task.placeName} روی نقشه`}><Text style={styles.taskTitle}>{task.placeName}</Text><Text style={styles.taskStatus}>{done ? 'انجام‌شده' : 'نمایش مقصد روی نقشه ←'}</Text></TouchableOpacity>
             <View style={styles.building}><Text style={styles.buildingText}>▥</Text></View>
           </View>
+          {!!task.description && <View style={styles.instructions}><Text style={styles.instructionsLabel}>توضیحات وظیفه</Text><Text style={styles.instructionsText}>{task.description}</Text></View>}
         </View>;
       })}
   </View>;
@@ -59,6 +60,9 @@ const styles = StyleSheet.create({
   task: { padding: 14, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e5ece7', borderRadius: 15, marginBottom: 10 },
   taskSelected: { borderColor: '#58c5a2', backgroundColor: '#f0fcf6' },
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  instructions: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#e5ece7', gap: 6 },
+  instructionsLabel: { color: '#0f766e', fontSize: 11, fontWeight: '700', textAlign: 'right' },
+  instructionsText: { color: '#475569', fontSize: 13, lineHeight: 23, textAlign: 'right', writingDirection: 'rtl' },
   complete: { width: 34, height: 40, alignItems: 'center', justifyContent: 'center' },
   checkbox: { color: '#a3b6af', fontSize: 29 },
   checked: { color: '#0f9475' },

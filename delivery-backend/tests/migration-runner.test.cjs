@@ -46,3 +46,11 @@ test('unknown and traversal filenames are rejected before database access', () =
     assert.equal(result.queries.length, 0);
   }
 });
+
+test('task description migration runs independently without recreating tasks or replaying seeds', () => {
+  const result = runMigration('003_add_task_description.sql');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Applied 003_add_task_description.sql/);
+  assert.ok(result.queries.some(sql => sql.includes('ADD COLUMN description TEXT NULL')));
+  assert.ok(result.queries.every(sql => !/INSERT INTO|CREATE TABLE|DELETE FROM/.test(sql)));
+});

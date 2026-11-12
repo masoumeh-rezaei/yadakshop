@@ -29,10 +29,8 @@ export const api = {
   me: (token: string) => request<User>('/api/auth/me', {}, token),
   users: (token: string) => request<User[]>('/api/users', {}, token),
   tasks: (token: string, signal?: AbortSignal) => request<DriverTask[]>('/api/tasks', { signal }, token),
-  setAssignment: (token: string, driverId: number, placeId: number, assigned: boolean) =>
-    request<DriverTask | null>('/api/tasks/assignment', { method: 'PUT', body: JSON.stringify({ driverId, placeId, assigned }), signal: AbortSignal.timeout(15_000) }, token),
-  completeTask: (token: string, task: DriverTask) =>
-    request<DriverTask>(`/api/tasks/${task.id}/complete`, { method: 'PATCH', body: JSON.stringify({ revision: task.revision }), signal: AbortSignal.timeout(15_000) }, token),
+  setAssignment: (token: string, driverId: number, placeId: number, assigned: boolean, options: { description?: string; revision?: number } = {}) =>
+    request<DriverTask | null>('/api/tasks/assignment', { method: 'PUT', body: JSON.stringify({ driverId, placeId, assigned, ...options }), signal: AbortSignal.timeout(15_000) }, token),
   latestLocations: (token: string) => request<DriverLocation[]>('/api/locations/latest', {}, token),
   locationHistory: (token: string, userId: number, signal?: AbortSignal, window?: { from: string; to: string }) => {
     const query = window ? `?${new URLSearchParams(window)}` : '';

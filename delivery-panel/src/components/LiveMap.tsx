@@ -69,8 +69,9 @@ function FitInitialLocations({
     const bounds = L.latLngBounds(
       points.map((item) => [Number(item.latitude), Number(item.longitude)]),
     );
-    if (points.length === 1) map.setView(bounds.getCenter(), 15);
-    else map.fitBounds(bounds, { padding: [55, 55], maxZoom: 15 });
+    // Initial placement must not leave a zoom-transition timer behind when navigating away.
+    if (points.length === 1) map.setView(bounds.getCenter(), 15, { animate: false });
+    else map.fitBounds(bounds, { padding: [55, 55], maxZoom: 15, animate: false });
     hasFitted.current = true;
   }, [locations, places, map]);
   return null;

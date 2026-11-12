@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   isActive?: number | boolean;
   hasLocationHistory?: number | boolean;
+  lastLocationAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -48,6 +49,7 @@ export interface DriverTask {
   driverPhone: string;
   placeId: number;
   placeName: string;
+  description: string | null;
   latitude: number | string;
   longitude: number | string;
   status: 'pending' | 'completed' | 'cancelled';

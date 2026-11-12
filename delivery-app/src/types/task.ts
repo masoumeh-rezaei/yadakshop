@@ -5,6 +5,7 @@ export interface DriverTask {
   driverPhone: string;
   placeId: number;
   placeName: string;
+  description: string | null;
   latitude: number | string;
   longitude: number | string;
   status: 'pending' | 'completed' | 'cancelled';
