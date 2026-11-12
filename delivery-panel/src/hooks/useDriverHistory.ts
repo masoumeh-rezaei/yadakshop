@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { api, ApiError } from '../api';
 import type { DriverLocation, HistoryDay } from '../types';
 import type { HistoryActionStatus, HistoryRequestResult } from '../components/HistoryActionButton';
-import { filterHistoryRange, FULL_AFTERNOON, historyDayKey, rangeTimestamp, type TimeRange } from '../utils/historyTime';
+import { filterHistoryRange, FULL_DAY, historyDayKey, rangeTimestamp, type TimeRange } from '../utils/historyTime';
 
 interface HistoryState {
   driverId: number | null;
@@ -19,7 +19,7 @@ interface HistoryState {
 }
 const initialState = (): HistoryState => ({
   driverId: null, days: [], recent: [], dayPoints: [], selectedDay: null,
-  range: [...FULL_AFTERNOON], rangeActive: false, loading: false, dayLoading: false,
+  range: [...FULL_DAY], rangeActive: false, loading: false, dayLoading: false,
   error: '', dayError: '',
 });
 const mergePoints = (first: DriverLocation[], second: DriverLocation[]) =>
@@ -115,14 +115,14 @@ export function useDriverHistory(token: string | null, onUnauthorized: () => voi
     const timeout = window.setTimeout(() => controller.abort(), 15_000);
     const driverId = state.driverId;
     setState((current) => ({
-      ...current, selectedDay: day, range: [...FULL_AFTERNOON], rangeActive: true,
+      ...current, selectedDay: day, range: [...FULL_DAY], rangeActive: true,
       dayPoints: [], dayLoading: true, dayError: '',
     }));
     try {
       // Load once per selected day. Dragging either handle filters locally, without network requests.
       const points = await api.locationHistory(token, driverId, controller.signal, {
-        from: new Date(rangeTimestamp(day, FULL_AFTERNOON[0])).toISOString(),
-        to: new Date(rangeTimestamp(day, FULL_AFTERNOON[1])).toISOString(),
+        from: new Date(rangeTimestamp(day, FULL_DAY[0])).toISOString(),
+        to: new Date(rangeTimestamp(day, FULL_DAY[1])).toISOString(),
       });
       if (dayRequest.current !== controller) return;
       setState((current) => ({ ...current, dayLoading: false,
@@ -142,7 +142,7 @@ export function useDriverHistory(token: string | null, onUnauthorized: () => voi
   }, []);
   const resetRange = useCallback(() => {
     setState((current) => ({ ...current, rangeActive: false, selectedDay: null,
-      range: [...FULL_AFTERNOON], dayLoading: false, dayError: '', dayPoints: [] }));
+      range: [...FULL_DAY], dayLoading: false, dayError: '', dayPoints: [] }));
     dayRequest.current?.abort();
     dayRequest.current = null;
   }, []);
@@ -158,7 +158,7 @@ export function useDriverHistory(token: string | null, onUnauthorized: () => voi
         days: [...new Map([{ date }, ...current.days].map((day) => [day.date, day])).values()]
           .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
         recent: recentPoints(mergePoints(current.recent, [location])),
-        dayPoints: current.selectedDay === date && timestamp >= rangeTimestamp(date, 720)
+        dayPoints: current.selectedDay === date
           ? mergePoints(current.dayPoints, [location]) : current.dayPoints,
       };
     });

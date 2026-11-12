@@ -1,7 +1,7 @@
 import { Input } from "./ui/FormControls";
 import { StatCard } from "./ui/StatCard";
 import { Button } from "./ui/Button";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   CircleUserRound,
@@ -29,6 +29,7 @@ import type { DriverLocation, DriverTask, SavedPlace, User } from "../types";
 import { AddUserModal } from "./AddUserModal";
 import { DriverListItem } from "./DriverListItem";
 import { HistoryTimeline } from "./HistoryTimeline";
+import type { HistoryActionStatus } from "./HistoryActionButton";
 import { useDriverHistory } from "../hooks/useDriverHistory";
 import { LiveMap } from "./LiveMap";
 import { PlaceModal } from "./PlaceModal";
@@ -72,9 +73,19 @@ export function Dashboard() {
   const [rangeFocus, setRangeFocus] = useState<{
     driverId: number; day: string; points: DriverLocation[];
   } | null>(null);
+  const focusedDay = useRef<string | null>(null);
   useEffect(() => {
-    if (!history.rangeActive) setRangeFocus(null);
-  }, [history.driverId, history.selectedDay, history.rangeActive]);
+    if (!history.rangeActive || !history.selectedDay || history.dayLoading || history.dayError) {
+      focusedDay.current = null;
+      setRangeFocus(null);
+      return;
+    }
+    if (history.driverId === null) return;
+    const key = `${history.driverId}:${history.selectedDay}`;
+    if (focusedDay.current === key) return;
+    focusedDay.current = key;
+    setRangeFocus({ driverId: history.driverId, day: history.selectedDay, points: history.dayPoints });
+  }, [history.driverId, history.selectedDay, history.rangeActive, history.dayLoading, history.dayError, history.dayPoints]);
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
   const [placeFocusRequest, setPlaceFocusRequest] = useState(0);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -193,6 +204,15 @@ export function Dashboard() {
       ),
     [locations],
   );
+  const historyStatuses = useMemo<Record<number, HistoryActionStatus>>(() => Object.fromEntries(
+    drivers.map((driver) => {
+      const status = history.statuses[driver.id];
+      const location = locationsByDriverId.get(driver.id);
+      const hasLocation = location && Date.parse(location.recordedAt) <= Date.now();
+      return [driver.id, status === 'loading' || status === 'error' ? status
+        : hasLocation ? 'idle' : status ?? (driver.hasLocationHistory === false || driver.hasLocationHistory === 0 ? 'empty' : 'idle')];
+    }),
+  ), [drivers, history.statuses, locationsByDriverId]);
   const visiblePlaces = useMemo(() => {
     const phrase = search.trim().toLowerCase();
     return phrase
@@ -205,19 +225,21 @@ export function Dashboard() {
   const selectedPlace =
     places.find((item) => item.id === selectedPlaceId) ?? null;
   const fetchHistory = useCallback(async (id: number) => {
+    if (historyStatuses[id] === 'empty') return 'empty' as const;
     setSelectedId(id);
     setSelectedPlaceId(null);
     setMapFocusTarget("history");
     setMapFocusRequest((current) => current + 1);
     return history.open(id);
-  }, [history.open]);
+  }, [history.open, historyStatuses]);
   const selectDriver = useCallback((id: number) => {
     setSelectedId(id);
     setSelectedPlaceId(null);
     setMapFocusTarget("driver");
     setMapFocusRequest((current) => current + 1);
-    void history.open(id);
-  }, [history.open]);
+    if (historyStatuses[id] === 'empty') history.close();
+    else void history.open(id);
+  }, [history.open, history.close, historyStatuses]);
   const selectPlace = useCallback((id: number) => {
     setSelectedPlaceId(id);
     setPlaceFocusRequest((current) => current + 1);
@@ -518,7 +540,7 @@ export function Dashboard() {
                   onPlaceMarkerSelect={selectPlaceMarker}
                   assignments={assignmentControls}
                   onHistoryRequest={fetchHistory}
-                  historyStatuses={history.statuses}
+                  historyStatuses={historyStatuses}
                   places={places}
                   selectedPlaceId={selectedPlaceId}
                   placeFocusRequest={placeFocusRequest}
@@ -553,7 +575,7 @@ export function Dashboard() {
                       driver={driver}
                       location={locationsByDriverId.get(driver.id)}
                       selected={selectedId === driver.id}
-                      historyStatus={history.statuses[driver.id] ?? "idle"}
+                      historyStatus={historyStatuses[driver.id] ?? "idle"}
                       onSelect={selectDriver}
                       onHistoryRequest={(id) => {
                         void fetchHistory(id);
@@ -694,7 +716,7 @@ export function Dashboard() {
                   onMarkerSelect={selectDriverMarker}
                   assignments={assignmentControls}
                   onHistoryRequest={fetchHistory}
-                  historyStatuses={history.statuses}
+                  historyStatuses={historyStatuses}
                 />
                 <div className="users-map-heading"><Truck size={17} /><b>موقعیت پیک‌ها</b><span>{driverLocations.length.toLocaleString("fa-IR")} پیک دارای موقعیت</span></div>
                 <MapLegend showPlaces={false} />

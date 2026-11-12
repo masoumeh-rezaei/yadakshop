@@ -38,7 +38,7 @@ function DriverPopupHistory({
 }) {
   const map = useMap();
   const requestHistory = async (status: HistoryActionStatus) => {
-    if (status === "loading") return;
+    if (status === "loading" || status === "empty") return;
     const result = await onRequest(driverId);
     if (result === "success") map.closePopup();
   };
