@@ -74,6 +74,14 @@ test('Tehran dates handle midnight and historical daylight-saving offsets', () =
   assert.equal(tehranDayStart('2021-03-22').toISOString(), '2021-03-21T20:30:00.000Z');
 });
 
+test('full Tehran calendar days support DST while arbitrary windows remain limited to 24 hours', () => {
+  const start = tehranDayStart('2021-09-21').toISOString();
+  const end = tehranDayStart('2021-09-22').toISOString();
+  assert.equal(historyWindow(start, end).to - historyWindow(start, end).from, 25 * 3_600_000);
+  assert.equal(historyWindow('2021-09-20T12:00:00Z', '2021-09-21T13:00:00Z'), null);
+  assert.equal(historyWindow('2021-09-20T12:00:00Z', '2021-09-21T12:00:00.001Z'), null);
+});
+
 test('both endpoints enforce administrator authorization and validate driver IDs', async () => {
   for (const path of ['/2/history', '/2/history/days']) {
     assert.equal((await get(path, null)).status, 401);
@@ -107,7 +115,7 @@ test('ten latest populated days skip gaps and other couriers with at most ten lo
 
 test('selected-day API excludes the next midnight and rejects invalid windows before querying', async () => {
   const day = '2026-11-05';
-  const start = new Date(`${day}T12:00:00+03:30`);
+  const start = new Date(`${day}T00:00:00+03:30`);
   const end = new Date('2026-11-06T00:00:00+03:30');
   records = [
     { id: 1, userId: 2, recordedAt: new Date(start.getTime() - 1) },

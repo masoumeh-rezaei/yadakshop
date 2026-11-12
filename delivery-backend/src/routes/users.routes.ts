@@ -12,6 +12,7 @@ interface UserRow extends RowDataPacket {
   fullName: string | null;
   role: 'ADMIN' | 'DRIVER';
   isActive: number;
+  hasLocationHistory: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,8 +23,11 @@ router.use(authenticate, authorize('ADMIN'));
 router.get('/', asyncHandler(async (_req, res) => {
   const [rows] = await pool.query<UserRow[]>(
     `SELECT id, phone, full_name AS fullName, role, is_active AS isActive,
-            created_at AS createdAt, updated_at AS updatedAt
+            created_at AS createdAt, updated_at AS updatedAt,
+            EXISTS(SELECT 1 FROM locations l WHERE l.user_id = users.id
+                   AND l.recorded_at < ?) AS hasLocationHistory
      FROM users ORDER BY created_at DESC`,
+    [new Date()],
   );
   res.json({ success: true, data: rows });
 }));
@@ -49,7 +53,7 @@ router.post('/', asyncHandler(async (req, res) => {
       [phone, passwordHash, fullName, role],
     );
     res.status(201).json({ success: true, data: {
-      id: result.insertId, phone, fullName, role, isActive: true,
+      id: result.insertId, phone, fullName, role, isActive: true, hasLocationHistory: false,
     } });
   } catch (error) {
     if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {

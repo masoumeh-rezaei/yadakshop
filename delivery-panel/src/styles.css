@@ -239,11 +239,10 @@
   .history-range-value { display: flex; align-items: center; gap: 8px; color: #2563eb; }
   .history-range-value > span { color: #94a3b8; font-size: 10px; }
   .history-range-value b { padding: 3px 7px; border-radius: 6px; background: #e8f0ff; font-size: 13px; font-variant-numeric: tabular-nums; }
-  .history-range { position: relative; height: 32px; margin: 14px 10px 0; }
+  .history-range { position: relative; height: 32px; margin: 14px 10px 0; cursor: ew-resize; touch-action: none; user-select: none; }
+  .history-range-rail { position: absolute; inset: 0 11px; pointer-events: none; }
   .history-range-track, .history-range-selection { position: absolute; top: 13px; right: 0; left: 0; height: 6px; border-radius: 10px; background: #e2e8f0; }
-  .history-range-selection { background: linear-gradient(90deg, #bfdbfe, #93c5fd 20%, #60a5fa 40%, #3b82f6 60%, #2563eb 80%, #1d4ed8); cursor: grab; touch-action: none; }
-  .history-range-selection:active { cursor: grabbing; }
-  .history-range-selection::before { position: absolute; inset: -10px 0; content: ""; }
+  .history-range-selection { background: linear-gradient(90deg, #bfdbfe, #93c5fd 20%, #60a5fa 40%, #3b82f6 60%, #2563eb 80%, #1d4ed8); }
   .history-range input { position: absolute; inset: 0; width: 100%; height: 32px; margin: 0; appearance: none; background: transparent; pointer-events: none; outline: none; }
   .history-range input::-webkit-slider-runnable-track { height: 6px; background: transparent; }
   .history-range input::-moz-range-track { height: 6px; background: transparent; }
@@ -252,7 +251,7 @@
   .history-range input:focus-visible { z-index: 2; }
   .history-range input:focus-visible::-webkit-slider-thumb { outline: 3px solid #93c5fd; outline-offset: 3px; }
   .history-range input:focus-visible::-moz-range-thumb { outline: 3px solid #93c5fd; outline-offset: 3px; }
-  .history-range.disabled { opacity: .45; }
+  .history-range.disabled { opacity: .45; cursor: wait; }
   .history-range input:disabled::-webkit-slider-thumb { cursor: wait; }
   .history-range input:disabled::-moz-range-thumb { cursor: wait; }
   .history-range-ticks { display: flex; justify-content: space-between; color: #94a3b8; font-size: 10px; }

@@ -2,7 +2,7 @@ import { CalendarDays, Check, Clock3, History, LoaderCircle, RotateCcw, X } from
 import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import { scrollToMapSection } from '../utils/mapMotion';
 import type { HistoryDay } from '../types';
-import { formatHistoryDay, formatHistoryTime, historyDayDate, shiftHistoryRange, type TimeRange } from '../utils/historyTime';
+import { FULL_DAY, formatHistoryDay, formatHistoryTime, historyDayDate, nearestHistoryHandle, resizeHistoryRange, type TimeRange } from '../utils/historyTime';
 
 interface Props {
   driverName: string;
@@ -34,10 +34,12 @@ const formatMonthYear = (date: Date) => {
 export function HistoryTimeline(props: Props) {
   const { days, selectedDay, range, rangeActive, loading, dayLoading, error, dayError } = props;
   const panelRef = useRef<HTMLElement>(null);
+  const startInput = useRef<HTMLInputElement>(null);
+  const endInput = useRef<HTMLInputElement>(null);
   const latestRange = useRef(range);
   const onCommit = useRef(props.onRangeCommit);
   const interaction = useRef({ pointer: false, keyboard: false, dirty: false, timer: 0 });
-  const selectionDrag = useRef<{ pointerId: number; startX: number; startRange: TimeRange; width: number } | null>(null);
+  const drag = useRef<{ pointerId: number; handle: 0 | 1; left: number; width: number; offset: number } | null>(null);
   latestRange.current = range;
   onCommit.current = props.onRangeCommit;
   const cancelCommit = () => window.clearTimeout(interaction.current.timer);
@@ -52,50 +54,47 @@ export function HistoryTimeline(props: Props) {
     interaction.current.timer = window.setTimeout(commitRange, 250);
   };
   const previewRange = (next: TimeRange) => {
+    if (next[0] === latestRange.current[0] && next[1] === latestRange.current[1]) return;
     latestRange.current = next;
     interaction.current.dirty = true;
     props.onRangeChange(next);
     // Accessibility/native changes without a pointer or keyboard gesture still settle.
     if (!interaction.current.pointer && !interaction.current.keyboard) settleRange();
   };
-  const finishPointer = () => {
+  const finishPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
     interaction.current.pointer = false;
     commitRange();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  const finishSelectionDrag = () => {
-    selectionDrag.current = null;
-    finishPointer();
-  };
-  const startSelectionDrag = (event: PointerEvent<HTMLDivElement>) => {
-    if (dayLoading || dayError) return;
-    const width = event.currentTarget.parentElement?.getBoundingClientRect().width ?? 0;
-    if (!width) return;
+  const startPointer = (event: PointerEvent<HTMLDivElement>) => {
+    if (dayLoading || dayError || drag.current || !event.isPrimary || event.button !== 0) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    // Native thumb centers travel between 11px and width - 11px (22px thumbs).
+    const left = bounds.left + 11;
+    const width = bounds.width - 22;
+    if (width <= 0) return;
+    const minute = ((event.clientX - left) / width) * FULL_DAY[1];
+    const handle = nearestHistoryHandle(latestRange.current, minute);
     event.preventDefault();
     cancelCommit();
     interaction.current.pointer = true;
-    selectionDrag.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startRange: [...latestRange.current],
-      width,
-    };
+    interaction.current.keyboard = false;
+    (handle === 0 ? startInput : endInput).current?.focus({ preventScroll: true });
+    const onThumb = Math.abs(minute - latestRange.current[handle]) * width / FULL_DAY[1] <= 11;
+    const offset = onThumb ? minute - latestRange.current[handle] : 0;
+    drag.current = { pointerId: event.pointerId, handle, left, width, offset };
     event.currentTarget.setPointerCapture(event.pointerId);
+    previewRange(resizeHistoryRange(latestRange.current, handle, minute - offset));
   };
-  const moveSelectionDrag = (event: PointerEvent<HTMLDivElement>) => {
-    const drag = selectionDrag.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const minutes = ((event.clientX - drag.startX) / drag.width) * 720;
-    previewRange(shiftHistoryRange(drag.startRange, minutes));
+  const movePointer = (event: PointerEvent<HTMLDivElement>) => {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    const minute = ((event.clientX - current.left) / current.width) * FULL_DAY[1] - current.offset;
+    previewRange(resizeHistoryRange(latestRange.current, current.handle, minute));
   };
   const inputEvents = {
-    onPointerDown: (event: PointerEvent<HTMLInputElement>) => {
-      cancelCommit();
-      interaction.current.pointer = true;
-      event.currentTarget.setPointerCapture(event.pointerId);
-    },
-    onPointerUp: finishPointer,
-    onPointerCancel: finishPointer,
-    onLostPointerCapture: finishPointer,
     onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) return;
       cancelCommit();
@@ -106,9 +105,8 @@ export function HistoryTimeline(props: Props) {
       if (interaction.current.dirty) settleRange();
     },
     onBlur: () => {
-      interaction.current.pointer = false;
       interaction.current.keyboard = false;
-      if (interaction.current.dirty) settleRange();
+      if (interaction.current.dirty && !interaction.current.pointer) settleRange();
     },
   };
   useEffect(() => {
@@ -116,14 +114,14 @@ export function HistoryTimeline(props: Props) {
     current.pointer = false;
     current.keyboard = false;
     current.dirty = false;
-    selectionDrag.current = null;
+    drag.current = null;
     return () => window.clearTimeout(current.timer);
-  }, [selectedDay]);
+  }, [selectedDay, dayLoading]);
   useEffect(() => {
     scrollToMapSection(panelRef.current);
   }, [props.driverName, selectedDay]);
-  const startPercent = ((range[0] - 720) / 720) * 100;
-  const endPercent = ((range[1] - 720) / 720) * 100;
+  const startPercent = (range[0] / FULL_DAY[1]) * 100;
+  const endPercent = (range[1] / FULL_DAY[1]) * 100;
   const disabled = dayLoading || Boolean(dayError);
 
   return <section ref={panelRef} className="history-timeline" aria-label="تاریخچه مسیر پیک" aria-busy={loading}>
@@ -163,24 +161,24 @@ export function HistoryTimeline(props: Props) {
           <div><CalendarDays size={16} /><b>{formatHistoryDay(selectedDay)}</b></div>
           <span className="history-range-value"><span>از</span> <b dir="ltr">{formatHistoryTime(range[0])}</b> <span>تا</span> <b dir="ltr">{formatHistoryTime(range[1])}</b></span>
         </div>
-        <div className={`history-range ${disabled ? 'disabled' : ''}`} dir="ltr">
-          <div className="history-range-track" />
-          <div className="history-range-selection" aria-hidden="true"
-            style={{ left: `${startPercent}%`, right: `${100 - endPercent}%` }}
-            onPointerDown={startSelectionDrag} onPointerMove={moveSelectionDrag}
-            onPointerUp={finishSelectionDrag} onPointerCancel={finishSelectionDrag}
-            onLostPointerCapture={finishSelectionDrag} />
-          <input {...inputEvents} type="range" min={720} max={1440} step={1} value={range[0]} disabled={disabled}
+        <div className={`history-range ${disabled ? 'disabled' : ''}`} dir="ltr"
+          onPointerDown={startPointer} onPointerMove={movePointer}
+          onPointerUp={finishPointer} onPointerCancel={finishPointer} onLostPointerCapture={finishPointer}>
+          <div className="history-range-rail" aria-hidden="true">
+            <div className="history-range-track" />
+            <div className="history-range-selection" style={{ left: `${startPercent}%`, right: `${100 - endPercent}%` }} />
+          </div>
+          <input {...inputEvents} ref={startInput} type="range" min={FULL_DAY[0]} max={FULL_DAY[1]} step={1} value={range[0]} disabled={disabled}
             aria-valuemax={range[1] - 1}
             aria-label="ساعت شروع مسیر" aria-valuetext={`${formatHistoryTime(range[0])} به وقت تهران`}
-            onChange={(event) => previewRange([Math.min(Number(event.target.value), range[1] - 1), range[1]])} />
-          <input {...inputEvents} type="range" min={720} max={1440} step={1} value={range[1]} disabled={disabled}
+            onChange={(event) => previewRange(resizeHistoryRange(latestRange.current, 0, Number(event.target.value)))} />
+          <input {...inputEvents} ref={endInput} type="range" min={FULL_DAY[0]} max={FULL_DAY[1]} step={1} value={range[1]} disabled={disabled}
             aria-valuemin={range[0] + 1}
             aria-label="ساعت پایان مسیر" aria-valuetext={`${formatHistoryTime(range[1])} به وقت تهران`}
-            onChange={(event) => previewRange([range[0], Math.max(Number(event.target.value), range[0] + 1)])} />
+            onChange={(event) => previewRange(resizeHistoryRange(latestRange.current, 1, Number(event.target.value)))} />
         </div>
         <div className="history-range-ticks" dir="ltr">
-          {[720, 900, 1080, 1260, 1440].map((minute) => <span key={minute}>{formatHistoryTime(minute)}</span>)}
+          {[0, 360, 720, 1080, 1440].map((minute) => <span key={minute}>{formatHistoryTime(minute)}</span>)}
         </div>
         <div className="history-range-footer">
           {dayLoading ? <span role="status"><LoaderCircle className="animate-spin" size={14} /> در حال دریافت موقعیت‌های این روز…</span>

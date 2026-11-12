@@ -1,11 +1,16 @@
 export type TimeRange = [number, number];
-export const FULL_AFTERNOON: TimeRange = [12 * 60, 24 * 60];
+export const FULL_DAY: TimeRange = [0, 24 * 60];
 export const HISTORY_TIME_ZONE = 'Asia/Tehran';
 
-export function shiftHistoryRange(range: TimeRange, delta: number): TimeRange {
-  const duration = range[1] - range[0];
-  const start = Math.min(1440 - duration, Math.max(720, range[0] + Math.round(delta)));
-  return [start, start + duration];
+export function nearestHistoryHandle(range: TimeRange, minute: number): 0 | 1 {
+  return Math.abs(minute - range[0]) <= Math.abs(minute - range[1]) ? 0 : 1;
+}
+
+export function resizeHistoryRange(range: TimeRange, handle: 0 | 1, minute: number): TimeRange {
+  const value = Math.max(FULL_DAY[0], Math.min(FULL_DAY[1], Math.round(minute)));
+  return handle === 0
+    ? [Math.min(value, range[1] - 1), range[1]]
+    : [range[0], Math.max(value, range[0] + 1)];
 }
 
 const dayFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -31,14 +36,14 @@ export function rangeTimestamp(day: string, minute: number): number {
     const [, sign, hours, minutes] = /GMT([+-])(\d{2}):(\d{2})/.exec(offset)!;
     timestamp = wallTime - (sign === '+' ? 1 : -1) * (Number(hours) * 60 + Number(minutes)) * 60_000;
   }
-  if (minute === 1440) {
-    const nextDay = new Date(wallTime).toISOString().slice(0, 10);
-    if (historyDayKey(timestamp) !== nextDay || historyDayKey(timestamp - 1) === nextDay) {
+  if (minute === 0 || minute === 1440) {
+    const boundaryDay = new Date(wallTime).toISOString().slice(0, 10);
+    if (historyDayKey(timestamp) !== boundaryDay || historyDayKey(timestamp - 1) === boundaryDay) {
       let lower = wallTime - 43_200_000;
       let upper = wallTime + 43_200_000;
       while (lower < upper) {
         const middle = Math.floor((lower + upper) / 2);
-        if (historyDayKey(middle) < nextDay) lower = middle + 1;
+        if (historyDayKey(middle) < boundaryDay) lower = middle + 1;
         else upper = middle;
       }
       timestamp = lower;

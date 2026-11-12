@@ -48,6 +48,13 @@ export function historyWindow(from: unknown, to: unknown, now = new Date()) {
   const start = new Date(from);
   const end = new Date(to);
   const duration = end.getTime() - start.getTime();
-  if (!Number.isFinite(duration) || duration <= 0 || duration > 86_400_000) return null;
+  if (!Number.isFinite(duration) || duration <= 0 || duration > 90_000_000) return null;
+  if (duration > 86_400_000) {
+    // A complete Tehran day can last 25 hours when historical DST ends.
+    const day = tehranDayKey(start);
+    const nextDay = new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    if (start.getTime() !== tehranDayStart(day).getTime()
+      || end.getTime() !== tehranDayStart(nextDay).getTime()) return null;
+  }
   return { from: start, to: end };
 }

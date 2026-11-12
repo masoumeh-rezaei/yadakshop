@@ -6,6 +6,7 @@ export interface User {
   fullName: string | null;
   role: UserRole;
   isActive?: number | boolean;
+  hasLocationHistory?: number | boolean;
   createdAt?: string;
   updatedAt?: string;
 }
