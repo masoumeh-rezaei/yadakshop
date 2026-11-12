@@ -1,7 +1,8 @@
 import { Building2, CheckCheck, ClipboardList, Clock3, LoaderCircle, MapPin, RefreshCw, Search, Truck, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DriverTask } from '../types';
 import { assignmentKey } from '../hooks/useTasks';
+import { formatTaskTimestamp, taskElapsed } from '../utils/taskTime';
 
 interface Props {
   tasks: DriverTask[];
@@ -11,11 +12,32 @@ interface Props {
   onRefresh: () => void;
   onCancel: (task: DriverTask) => void;
   onShowPlace: (task: DriverTask) => void;
+  focusedTaskId?: number | null;
+  focusRequest?: number;
 }
 
 export function TasksPage(props: Props) {
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('pending');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>(props.focusedTaskId ? 'completed' : 'pending');
+  const [now, setNow] = useState(Date.now());
+  const scrolled = useRef('');
+  useEffect(() => {
+    const update = () => { if (!document.hidden) setNow(Date.now()); };
+    const timer = window.setInterval(update, 30_000);
+    document.addEventListener('visibilitychange', update);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', update); };
+  }, []);
+  useEffect(() => { if (props.focusedTaskId) { setFilter('completed'); setSearch(''); } }, [props.focusedTaskId, props.focusRequest]);
+  useEffect(() => {
+    if (!props.focusedTaskId) return;
+    const key = `${props.focusedTaskId}:${props.focusRequest}`;
+    if (scrolled.current === key) return;
+    const frame = requestAnimationFrame(() => {
+      const card = document.getElementById(`task-${props.focusedTaskId}`);
+      if (card) { scrolled.current = key; card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [props.focusedTaskId, props.focusRequest, props.tasks, filter]);
   const remaining = props.tasks.filter((task) => task.status === 'pending').length;
   const visible = useMemo(() => props.tasks.filter((task) => (filter === 'all' || task.status === filter) &&
     `${task.driverName || ''} ${task.driverPhone} ${task.placeName} ${task.description || ''}`.toLocaleLowerCase('fa-IR').includes(search.trim().toLocaleLowerCase('fa-IR'))), [props.tasks, filter, search]);
@@ -30,11 +52,14 @@ export function TasksPage(props: Props) {
       : <div className="tasks-grid">{visible.map((task) => {
         const done = task.status === 'completed';
         const busy = props.pending.has(assignmentKey(task.driverId, task.placeId));
-        return <article key={task.id} className={`task-card ${done ? 'completed' : ''}`}>
+        return <article key={task.id} id={`task-${task.id}`} className={`task-card ${done ? 'completed' : ''} ${props.focusedTaskId === task.id ? 'task-highlighted' : ''}`}>
           <div className="task-card-top"><span className="task-place-icon"><Building2 size={22} /></span><div><h3>{task.placeName}</h3><span className={`task-status ${done ? 'done' : ''}`}>{done ? <CheckCheck size={13} /> : <Clock3 size={13} />}{done ? 'انجام‌شده' : 'در انتظار انجام'}</span></div></div>
           <div className="task-driver"><Truck size={16} /><b>{task.driverName || 'پیک بدون نام'}</b><span dir="ltr">{task.driverPhone}</span></div>
           {task.description && <p className="task-description">{task.description}</p>}
-          <div className="task-assigned-at">{done ? 'انجام: ' : 'تخصیص: '}{new Date(done ? task.completedAt || task.updatedAt : task.assignedAt).toLocaleString('fa-IR', { timeZone: 'Asia/Tehran', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          <div className="task-assigned-at"><time dateTime={task.assignedAt}>تخصیص: {formatTaskTimestamp(task.assignedAt)}</time>
+            {done && <time dateTime={task.completedAt || task.updatedAt}>انجام: {formatTaskTimestamp(task.completedAt || task.updatedAt)}</time>}
+            <span className="task-elapsed">{taskElapsed(done ? task.completedAt || task.updatedAt : task.assignedAt, now)} از {done ? 'انجام وظیفه' : 'تخصیص وظیفه'} گذشته است.</span>
+          </div>
           <div className="task-actions"><button type="button" onClick={() => props.onShowPlace(task)}><MapPin size={14} /> نمایش مکان</button>{!done && <button type="button" className="task-cancel" disabled={busy} aria-label={`لغو وظیفه ${task.placeName} برای ${task.driverName || task.driverPhone}`} onClick={() => props.onCancel(task)}>{busy ? <LoaderCircle size={14} className="animate-spin" /> : <X size={14} />}</button>}</div>
         </article>;
       })}</div>}

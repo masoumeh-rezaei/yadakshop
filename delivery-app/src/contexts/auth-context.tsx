@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { ApiError, getCurrentUser, loginRequest } from '@/services/api';
 import { tokenStorage } from '@/services/token-storage';
 import type { User } from '@/types/auth';
+import { unregisterTaskNotifications } from '@/services/push-notifications';
 
 interface AuthContextValue {
   user: User | null;
@@ -19,10 +20,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const logout = useCallback(async () => {
+    if (token) await unregisterTaskNotifications(token);
     await tokenStorage.remove();
     setToken(null);
     setUser(null);
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     let mounted = true;

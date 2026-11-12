@@ -7,6 +7,7 @@ import locationRoutes from './routes/locations.routes.js';
 import userRoutes from './routes/users.routes.js';
 import placeRoutes from './routes/places.routes.js';
 import taskRoutes from './routes/tasks.routes.js';
+import notificationRoutes from './routes/notifications.routes.js';
 import { env } from './config/env.js';
 
 const app = express();
@@ -20,6 +21,8 @@ app.get('/api/health', async (_req, res) => {
     await pool.query('SELECT 1');
     // Candidate/production readiness must fail if required task schema is missing.
     await pool.query('SELECT id, driver_id, place_id, description, status, revision FROM driver_tasks LIMIT 0');
+    await pool.query('SELECT id, user_id, expo_token FROM push_devices LIMIT 0');
+    await pool.query('SELECT id, task_id, task_revision, device_id, state, lease_id FROM task_push_jobs LIMIT 0');
     res.json({ success: true, message: 'Delivery API is running', database: 'connected' });
   } catch (error) {
     console.error('Database connection error:', error);
@@ -31,6 +34,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/places', placeRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // این دو middleware باید آخر باشند: اول مسیر ناموجود و سپس خطاهای کنترل‌نشده.
 app.use((_req, res) => res.status(404).json({ success: false, message: 'مسیر API پیدا نشد' }));

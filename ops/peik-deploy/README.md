@@ -14,6 +14,31 @@ The deploy job downloads only its own build artifact, verifies its checksum, and
 uses a dedicated SSH key. Actions are pinned to reviewed commit SHAs. The build
 job has no deployment secrets. No GitHub runner is installed on the WHM server.
 
+## Panel release while database preparation is pending
+
+`.github/peik-release.json` can pin `backendRef` to an exact ancestor commit,
+with a required explanation. The current pin is the last successful production
+backend, `5e182ed3cb3c2a8addc65b75254fb2b1c4f1a14e`. CI still builds/tests the
+current backend and panel, then separately builds/tests and packages the pinned
+backend with its own lockfile and migrations. `backend/release-source.json`
+records both source commits. The current panel is always packaged.
+
+This publishes the panel while keeping the backend on its prepared schema.
+The existing migration fingerprint, candidate checks, main-only restriction,
+promotion and rollback checks all remain active; a mismatching backend pin
+still stops at the server's migration gate. No SQL is executed by CI.
+
+The panel checks the authenticated task capabilities endpoint. An older backend
+returns 404, which disables optional instructions instead of silently discarding
+them; assignment/cancellation, task times, maps and notifications from reconciled
+completions remain usable. Driver sockets and mobile remote push still need the
+new backend. Capabilities automatically enable descriptions after that upgrade.
+
+To release the new backend, prepare production migrations `003` and `004`, set
+`backendRef` to `null` in a reviewed PR, then record the schema approval for the
+resulting current-main SHA and rerun deployment as described below. Never unset
+the pin as a substitute for preparing and approving the database.
+
 ## Server boundary
 
 The SSH account `peikdeploy` accepts `probe` and `deploy <40-character SHA>` only.

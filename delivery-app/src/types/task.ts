@@ -20,10 +20,12 @@ export interface TaskMapPayload {
   tasks: { id: number; placeName: string; latitude: number; longitude: number }[];
   selectedTaskId: number | null;
   focusRequest: number;
+  locationFocusRequest?: number;
   currentLocation: { latitude: number; longitude: number } | null;
 }
 
 export interface DriverTaskMapProps {
   payload: TaskMapPayload;
   onSelectTask: (id: number) => void;
+  onDestinationAction: (id: number, action: 'neshan' | 'share' | 'save') => void;
 }

@@ -1,9 +1,11 @@
 import { Platform } from 'react-native';
 import type { LoginResponse, User } from '@/types/auth';
 import type { DriverTask } from '@/types/task';
+import { taskMapUrl } from '@/utils/task-map-url';
 
 const fallbackUrl = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL || fallbackUrl).replace(/\/$/, '');
+export const TASK_MAP_URL = taskMapUrl(API_URL, __DEV__, process.env.EXPO_PUBLIC_MAP_URL);
 
 interface ApiErrorBody { message?: string }
 
@@ -83,4 +85,19 @@ export const completeMyTask = async (token: string, task: DriverTask, signal?: A
     body: JSON.stringify({ revision: task.revision }), signal,
   });
   return (await parseResponse<{ success: true; data: DriverTask }>(response)).data;
+};
+
+export const registerPushDevice = async (token: string, expoPushToken: string, platform: 'android' | 'ios') => {
+  const response = await fetchWithTimeout(`${API_URL}/api/notifications/device`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expoPushToken, platform }),
+  });
+  await parseResponse(response);
+};
+export const removePushDevice = async (token: string, expoPushToken: string) => {
+  const response = await fetch(`${API_URL}/api/notifications/device`, {
+    method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expoPushToken }), signal: AbortSignal.timeout(3000),
+  });
+  await parseResponse(response);
 };

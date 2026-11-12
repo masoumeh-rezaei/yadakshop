@@ -4,6 +4,7 @@ import type { User } from '@/types/auth';
 
 const TOKEN_KEY = 'delivery_auth_token';
 const USER_KEY = 'delivery_auth_user';
+const PUSH_TOKEN_KEY = 'delivery_push_token';
 
 const getItem = (key: string) => {
   if (Platform.OS === 'web') return Promise.resolve(globalThis.localStorage?.getItem(key) ?? null);
@@ -27,6 +28,9 @@ const removeItem = async (key: string) => {
 };
 
 export const tokenStorage = {
+  getPushToken: () => getItem(PUSH_TOKEN_KEY),
+  setPushToken: (token: string) => setItem(PUSH_TOKEN_KEY, token),
+  removePushToken: () => removeItem(PUSH_TOKEN_KEY),
   get: () => getItem(TOKEN_KEY),
   getUser: async (): Promise<User | null> => {
     const value = await getItem(USER_KEY);

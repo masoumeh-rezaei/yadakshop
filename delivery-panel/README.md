@@ -76,6 +76,19 @@ present an unavailable service as an empty result. Periodic refresh and the
 retry action enable assignments once the service is ready. Publish both HTML
 entry points and all assets; no schema change is needed for this panel release.
 
+Current task controls require confirmation before assignment/cancellation and
+keep completion available only in the courier app. Cards show exact Tehran
+assignment/completion timestamps and elapsed time. The notification inbox works
+across panel views; optional desktop notifications need browser permission and
+an open panel tab.
+
+`/api/tasks/capabilities` advertises instruction support. While an older backend
+is deployed, its 404 response disables the description field, keeping blank
+assignment/cancellation available without silently dropping written instructions.
+After the backend upgrade, the next refresh enables the field automatically.
+The production release currently retains the last successful backend through
+`.github/peik-release.json`; see the deployment guide before removing this pin.
+
 Assignment popups close on a pointer press anywhere outside their content,
 including outside the map. Controls inside the popup remain interactive; the
 document listener exists only while a popup is open and is removed on map

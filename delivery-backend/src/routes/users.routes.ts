@@ -4,7 +4,7 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { emitTasksChanged } from '../realtime.js';
+import { disconnectUser, emitTasksChanged } from '../realtime.js';
 
 interface UserRow extends RowDataPacket {
   id: number;
@@ -82,6 +82,7 @@ router.patch('/:id/status', asyncHandler(async (req, res) => {
     res.status(404).json({ success: false, message: 'کاربر پیدا نشد' });
     return;
   }
+  if (!isActive) disconnectUser(id);
   res.json({ success: true, data: { id, isActive } });
 }));
 
@@ -127,6 +128,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     }
 
     await connection.commit();
+    disconnectUser(id);
     emitTasksChanged({ driverId: id });
     res.status(204).send();
   } catch (error) {
