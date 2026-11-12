@@ -10,6 +10,10 @@ const router = Router();
 const validId = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 router.use(authenticate);
 
+router.get('/capabilities', authorize('ADMIN'), (_req, res) => {
+  res.json({ success: true, data: { descriptions: true } });
+});
+
 router.get('/mine', authorize('DRIVER'), asyncHandler(async (req, res) => {
   // Never accept a client-provided driver ID for the mobile endpoint.
   res.json({ success: true, data: await listTasks(req.user!.id) });

@@ -738,6 +738,7 @@ export function Dashboard() {
         driverName={assignmentDriver?.fullName || assignmentDriver?.phone || 'پیک'}
         placeName={assignmentPlace?.name || 'مکان'}
         error={taskState.error}
+        descriptionsAvailable={taskState.descriptionsAvailable}
         onConfirm={(description) => taskState.assign(taskDialog.driverId, taskDialog.placeId, taskDialog.assigned,
           taskDialog.assigned ? { description } : { revision: taskDialog.revision })}
         onClose={() => setTaskDialog(null)}

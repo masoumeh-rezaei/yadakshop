@@ -113,6 +113,13 @@ test('task APIs require authentication and drivers cannot administer assignments
   assert.equal((await request('/mine', 4)).status, 401);
   assert.equal((await request('/1/complete', 1, 'PATCH', { revision: 1 })).status, 403);
 });
+test('task description capabilities are explicit and restricted to authenticated administrators', async () => {
+  assert.equal((await request('/capabilities', null)).status, 401);
+  assert.equal((await request('/capabilities', 2)).status, 403);
+  const result = await request('/capabilities');
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.data, { descriptions: true });
+});
 test('reject malformed, non-driver, inactive-driver and missing-place assignments', async () => {
   for (const body of [{ driverId: '2', placeId: 10, assigned: true }, { driverId: 2, placeId: 10, assigned: 'true' }, { driverId: 0, placeId: 10, assigned: true }]) {
     assert.equal((await request('/assignment', 1, 'PUT', body)).status, 400);

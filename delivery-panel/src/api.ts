@@ -29,6 +29,13 @@ export const api = {
   me: (token: string) => request<User>('/api/auth/me', {}, token),
   users: (token: string) => request<User[]>('/api/users', {}, token),
   tasks: (token: string, signal?: AbortSignal) => request<DriverTask[]>('/api/tasks', { signal }, token),
+  taskCapabilities: async (token: string, signal?: AbortSignal) => {
+    try { return await request<{ descriptions: boolean }>('/api/tasks/capabilities', { signal }, token); }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 404) return { descriptions: false };
+      throw error;
+    }
+  },
   setAssignment: (token: string, driverId: number, placeId: number, assigned: boolean, options: { description?: string; revision?: number } = {}) =>
     request<DriverTask | null>('/api/tasks/assignment', { method: 'PUT', body: JSON.stringify({ driverId, placeId, assigned, ...options }), signal: AbortSignal.timeout(15_000) }, token),
   latestLocations: (token: string) => request<DriverLocation[]>('/api/locations/latest', {}, token),

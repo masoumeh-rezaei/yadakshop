@@ -9,6 +9,7 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const [descriptionsAvailable, setDescriptionsAvailable] = useState(false);
   const inFlight = useRef(new Set<string>());
   const request = useRef<AbortController | null>(null);
   const queuedRefresh = useRef(false);
@@ -32,9 +33,13 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
     request.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 15_000);
     try {
-      const result = await api.tasks(token, controller.signal);
+      const [result, capabilities] = await Promise.all([
+        api.tasks(token, controller.signal),
+        api.taskCapabilities(token, controller.signal).catch(() => null),
+      ]);
       if (request.current !== controller || !mounted.current) return;
       setTasks(result);
+      if (capabilities) setDescriptionsAvailable(capabilities.descriptions === true);
       setError('');
     } catch (cause) {
       if (request.current === controller && mounted.current) reportError(cause);
@@ -50,6 +55,7 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
   useEffect(() => {
     mounted.current = true;
     setTasks([]);
+    setDescriptionsAvailable(false);
     setLoading(true);
     void refresh();
     const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 20_000);
@@ -94,8 +100,13 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
     return succeeded;
   }, [token, refresh, reportError]);
 
-  const assign = useCallback((driverId: number, placeId: number, assigned: boolean, options?: { description?: string; revision?: number }) =>
-    mutate(assignmentKey(driverId, placeId), () => api.setAssignment(token!, driverId, placeId, assigned, options)), [mutate, token]);
+  const assign = useCallback((driverId: number, placeId: number, assigned: boolean, options?: { description?: string; revision?: number }) => {
+    if (assigned && options?.description?.trim() && !descriptionsAvailable) {
+      reportError(new Error('ثبت توضیحات فعلاً در دسترس نیست؛ می‌توانید وظیفه را بدون توضیحات ثبت کنید.'));
+      return Promise.resolve(false);
+    }
+    return mutate(assignmentKey(driverId, placeId), () => api.setAssignment(token!, driverId, placeId, assigned, options));
+  }, [mutate, token, descriptionsAvailable, reportError]);
 
-  return { tasks, loading, error, pending, refresh, assign };
+  return { tasks, loading, error, pending, descriptionsAvailable, refresh, assign };
 }
