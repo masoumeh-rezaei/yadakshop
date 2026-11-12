@@ -1,9 +1,7 @@
 import { Input } from "./ui/FormControls";
-import { StatCard } from "./ui/StatCard";
 import { Button } from "./ui/Button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
   CircleUserRound,
   ClipboardList,
   LogOut,
@@ -38,24 +36,12 @@ import { UserManagementPanel } from "./UserManagementPanel";
 import { filterHistoryRange, type TimeRange } from '../utils/historyTime';
 import { useTasks } from '../hooks/useTasks';
 import { TasksPage } from './TasksPage';
+import { TaskAssignmentDialog, type TaskAssignmentSelection } from './TaskAssignmentDialog';
+import { locationTime } from '../utils/locationTime';
 
 type View = "map" | "places" | "users" | "tasks";
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
-const locationTime = (date: string) => {
-  const seconds = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(date).getTime()) / 1000),
-  );
-  if (seconds < 60) return `${seconds} ثانیه پیش`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} دقیقه پیش`;
-  return new Date(date).toLocaleString("fa-IR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "short",
-    day: "numeric",
-  });
-};
 const online = (date: string) =>
   Date.now() - new Date(date).getTime() < 2 * 60 * 1000;
 
@@ -66,6 +52,7 @@ export function Dashboard() {
   const [locations, setLocations] = useState<DriverLocation[]>([]);
   const history = useDriverHistory(token, logout);
   const taskState = useTasks(token, logout);
+  const [taskDialog, setTaskDialog] = useState<TaskAssignmentSelection | null>(null);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapFocusRequest, setMapFocusRequest] = useState(0);
@@ -219,9 +206,6 @@ export function Dashboard() {
       ? places.filter((item) => item.name.toLowerCase().includes(phrase))
       : places;
   }, [places, search]);
-  const onlineCount = locations.filter((item) =>
-    online(item.recordedAt),
-  ).length;
   const selectedPlace =
     places.find((item) => item.id === selectedPlaceId) ?? null;
   const fetchHistory = useCallback(async (id: number) => {
@@ -338,8 +322,14 @@ export function Dashboard() {
   };
   const assignmentControls = {
     tasks: taskState.tasks, drivers, places, loading: taskState.loading,
-    error: taskState.error, pending: taskState.pending, onAssign: taskState.assign,
+    error: taskState.error, pending: taskState.pending,
+    onAssign: (driverId: number, placeId: number, assigned: boolean) => {
+      const task = taskState.tasks.find((item) => item.driverId === driverId && item.placeId === placeId);
+      setTaskDialog({ driverId, placeId, assigned, revision: assigned ? undefined : task?.revision });
+    },
   };
+  const assignmentDriver = taskDialog ? drivers.find((driver) => driver.id === taskDialog.driverId) : null;
+  const assignmentPlace = taskDialog ? places.find((place) => place.id === taskDialog.placeId) : null;
   const showTaskPlace = (task: DriverTask) => {
     changeView('map');
     setSelectedId(null);
@@ -503,28 +493,8 @@ export function Dashboard() {
           </div>
         ) : view === "map" ? (
           <>
-            <section className="stats-grid grid grid-cols-[repeat(3,_1fr)] gap-[15px] mb-[16px] [&_article]:min-h-[92px] [&_article]:flex [&_article]:items-center [&_article]:gap-[14px] [&_article]:p-[17px] [&_article]:[background:#fff] [&_article]:[border:1px_solid_#e8ebf1] [&_article]:rounded-[14px] [&_article]:[box-shadow:0_3px_10px_rgba(19,31,54,.025)] [&_article_div]:flex [&_article_div]:flex-col [&_article_div]:gap-[5px] [&_small]:text-[#8993a4] [&_small]:text-[11px] [&_strong]:text-[#172033] [&_strong]:text-[24px] [@media(max-width:640px)]:[&&]:grid-cols-[1fr]">
-              <StatCard
-                icon={<Truck />}
-                label="کل پیک‌ها"
-                value={drivers.length}
-                tone="blue"
-              />
-              <StatCard
-                icon={<Activity />}
-                label="آنلاین"
-                value={onlineCount}
-                tone="green"
-              />
-              <StatCard
-                icon={<Map />}
-                label="دارای موقعیت"
-                value={locations.length}
-                tone="amber"
-              />
-            </section>
             {historyPanel}
-            <section className="map-card h-[calc(100vh_-_209px)] min-h-[540px] grid grid-cols-[minmax(0,_1fr)_310px] overflow-hidden [background:#fff] [border:1px_solid_#e4e8ef] rounded-[16px] [box-shadow:0_8px_28px_rgba(26,39,66,.055)] [@media(max-width:980px)]:h-[auto] [@media(max-width:980px)]:min-h-0 [@media(max-width:980px)]:grid-cols-[1fr]">
+            <section className="map-card h-[calc(100vh_-_123px)] min-h-[540px] grid grid-cols-[minmax(0,_1fr)_310px] overflow-hidden [background:#fff] [border:1px_solid_#e4e8ef] rounded-[16px] [box-shadow:0_8px_28px_rgba(26,39,66,.055)] [@media(max-width:980px)]:h-[auto] [@media(max-width:980px)]:min-h-0 [@media(max-width:980px)]:grid-cols-[1fr]">
               <div className="map-panel relative min-w-0 [@media(max-width:980px)]:h-[520px] [@media(max-width:640px)]:[&&]:h-[440px]">
                 <LiveMap
                   key="live-map"
@@ -696,7 +666,7 @@ export function Dashboard() {
         ) : view === 'tasks' ? (
           <TasksPage tasks={taskState.tasks} loading={taskState.loading} error={taskState.error}
             pending={taskState.pending} onRefresh={() => { void taskState.refresh(); }}
-            onComplete={taskState.complete} onCancel={(task) => { void taskState.assign(task.driverId, task.placeId, false); }}
+            onCancel={(task) => setTaskDialog({ driverId: task.driverId, placeId: task.placeId, assigned: false, revision: task.revision })}
             onShowPlace={showTaskPlace} />
         ) : (
           <>
@@ -739,6 +709,15 @@ export function Dashboard() {
           </>
         )}
       </main>
+      {taskDialog && <TaskAssignmentDialog
+        selection={taskDialog}
+        driverName={assignmentDriver?.fullName || assignmentDriver?.phone || 'پیک'}
+        placeName={assignmentPlace?.name || 'مکان'}
+        error={taskState.error}
+        onConfirm={(description) => taskState.assign(taskDialog.driverId, taskDialog.placeId, taskDialog.assigned,
+          taskDialog.assigned ? { description } : { revision: taskDialog.revision })}
+        onClose={() => setTaskDialog(null)}
+      />}
       {showAddUser && token && (
         <AddUserModal
           token={token}

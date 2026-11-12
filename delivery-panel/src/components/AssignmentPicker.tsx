@@ -26,7 +26,7 @@ export function AssignmentPicker({ target, controls }: { target: Target; control
 
   return <div className="assignment-picker" aria-label={isDriver ? 'انتخاب مکان‌های پیک' : 'انتخاب پیک‌های مکان'}>
     <div className="assignment-picker-heading"><ClipboardList size={16} /><b>{isDriver ? 'مقصدهای این پیک' : 'پیک‌های این مکان'}</b></div>
-    <p className="assignment-picker-description">{isDriver ? 'با انتخاب مکان، وظیفهٔ آن برای پیک ثبت می‌شود.' : 'پیک‌های موردنظر را برای رفتن به این مکان انتخاب کنید.'}</p>
+    <p className="assignment-picker-description">{isDriver ? 'مکان را انتخاب کنید، سپس جزئیات وظیفه را تأیید کنید.' : 'پیک را انتخاب کنید، سپس جزئیات وظیفه را تأیید کنید.'}</p>
     {choices.length > 4 && <label className="assignment-search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isDriver ? 'جست‌وجوی مکان' : 'جست‌وجوی پیک'} aria-label="جست‌وجوی گزینه‌های تخصیص" /></label>}
     {controls.error && <div className="assignment-error" role="alert">{controls.error}</div>}
     {controls.loading ? <div className="assignment-empty" role="status"><LoaderCircle className="animate-spin" size={17} /> در حال دریافت وظایف…</div>

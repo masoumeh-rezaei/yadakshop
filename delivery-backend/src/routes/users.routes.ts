@@ -12,7 +12,7 @@ interface UserRow extends RowDataPacket {
   fullName: string | null;
   role: 'ADMIN' | 'DRIVER';
   isActive: number;
-  hasLocationHistory: number;
+  lastLocationAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,12 +24,12 @@ router.get('/', asyncHandler(async (_req, res) => {
   const [rows] = await pool.query<UserRow[]>(
     `SELECT id, phone, full_name AS fullName, role, is_active AS isActive,
             created_at AS createdAt, updated_at AS updatedAt,
-            EXISTS(SELECT 1 FROM locations l WHERE l.user_id = users.id
-                   AND l.recorded_at < ?) AS hasLocationHistory
+            (SELECT l.recorded_at FROM locations l WHERE l.user_id = users.id
+             AND l.recorded_at < ? ORDER BY l.recorded_at DESC LIMIT 1) AS lastLocationAt
      FROM users ORDER BY created_at DESC`,
     [new Date()],
   );
-  res.json({ success: true, data: rows });
+  res.json({ success: true, data: rows.map((user) => ({ ...user, hasLocationHistory: user.lastLocationAt !== null })) });
 }));
 
 router.post('/', asyncHandler(async (req, res) => {

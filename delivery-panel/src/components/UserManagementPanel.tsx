@@ -4,6 +4,7 @@ import type { DriverLocation, User } from '../types';
 import { Avatar } from './ui/Avatar';
 import { Button } from './ui/Button';
 import { Input } from './ui/FormControls';
+import { locationTime } from '../utils/locationTime';
 
 interface Props {
   users: User[];
@@ -45,8 +46,9 @@ export function UserManagementPanel(props: Props) {
           const active = user.isActive === true || user.isActive === 1;
           const busy = props.deletingIds.includes(user.id) || props.updatingIds.includes(user.id);
           const name = user.fullName || 'بدون نام';
+          const lastLocationAt = props.locations.get(user.id)?.recordedAt || user.lastLocationAt;
           const identity = <><Avatar>{name.slice(0, 1)}</Avatar><span className="user-identity"><b>{name}</b><small dir="ltr">{user.phone}</small>
-            {isDriver && !props.locations.has(user.id) && <em>موقعیتی ثبت نشده</em>}</span>
+            {isDriver && <em title={lastLocationAt ? 'آخرین موقعیت ثبت‌شده به وقت تهران' : undefined}>{lastLocationAt ? locationTime(lastLocationAt) : 'موقعیتی ثبت نشده'}</em>}</span>
             {isDriver && props.locations.has(user.id) && <MapPin className="user-location-icon" size={14} />}</>;
           return <tr key={user.id} className={selected ? 'selected' : ''}>
             <td>{isDriver ? <button type="button" className="user-select-button" aria-pressed={selected} aria-label={`نمایش ${name} روی نقشه`} onClick={() => props.onSelect(user.id)}>{identity}</button>

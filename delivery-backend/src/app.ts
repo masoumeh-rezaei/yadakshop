@@ -19,7 +19,7 @@ app.get('/api/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
     // Candidate/production readiness must fail if required task schema is missing.
-    await pool.query('SELECT id, driver_id, place_id, status, revision FROM driver_tasks LIMIT 0');
+    await pool.query('SELECT id, driver_id, place_id, description, status, revision FROM driver_tasks LIMIT 0');
     res.json({ success: true, message: 'Delivery API is running', database: 'connected' });
   } catch (error) {
     console.error('Database connection error:', error);

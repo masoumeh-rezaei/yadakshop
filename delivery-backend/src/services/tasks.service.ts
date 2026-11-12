@@ -8,6 +8,7 @@ export interface TaskRow extends RowDataPacket {
   driverPhone: string;
   placeId: number;
   placeName: string;
+  description: string | null;
   latitude: string | number;
   longitude: string | number;
   status: 'pending' | 'completed' | 'cancelled';
@@ -23,7 +24,7 @@ export class TaskError extends Error {
 
 const taskSelect = `SELECT t.id, t.driver_id AS driverId, u.full_name AS driverName,
   u.phone AS driverPhone, t.place_id AS placeId, p.name AS placeName,
-  p.latitude, p.longitude, t.status, t.revision, t.assigned_at AS assignedAt,
+  p.latitude, p.longitude, t.description, t.status, t.revision, t.assigned_at AS assignedAt,
   t.completed_at AS completedAt, t.updated_at AS updatedAt
   FROM driver_tasks t INNER JOIN users u ON u.id = t.driver_id
   INNER JOIN saved_places p ON p.id = t.place_id`;
@@ -45,7 +46,7 @@ async function readTask(connection: PoolConnection, driverId: number, placeId: n
   return rows[0] ?? null;
 }
 
-export async function setAssignment(driverId: number, placeId: number, assigned: boolean, adminId: number) {
+export async function setAssignment(driverId: number, placeId: number, assigned: boolean, adminId: number, description: string | null = null, revision?: number) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -63,15 +64,23 @@ export async function setAssignment(driverId: number, placeId: number, assigned:
     if (assigned) {
       // Preserve the original assignment on duplicate retries; reopen a completed/cancelled pair.
       await connection.execute(
-        `INSERT INTO driver_tasks (driver_id, place_id, assigned_by) VALUES (?, ?, ?)
+        `INSERT INTO driver_tasks (driver_id, place_id, assigned_by, description) VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
+           description = IF(status = 'pending', description, ?),
            assigned_at = IF(status = 'pending', assigned_at, CURRENT_TIMESTAMP),
            completed_at = IF(status = 'pending', completed_at, NULL),
            revision = IF(status = 'pending', revision, revision + 1),
            assigned_by = IF(status = 'pending', assigned_by, ?), status = 'pending'`,
-        [driverId, placeId, adminId, adminId],
+        [driverId, placeId, adminId, description, description, adminId],
       );
     } else {
+      if (revision !== undefined) {
+        const current = await readTask(connection, driverId, placeId);
+        const repeatedCancel = current?.status === 'cancelled' && current.revision === revision + 1;
+        if (!current || (current.revision !== revision && !repeatedCancel)) {
+          throw new TaskError(409, 'این وظیفه تغییر کرده است؛ فهرست را به‌روز کنید و دوباره انتخاب کنید.');
+        }
+      }
       await connection.execute(
         `UPDATE driver_tasks SET status = 'cancelled', completed_at = NULL, revision = revision + 1
          WHERE driver_id = ? AND place_id = ? AND status = 'pending'`, [driverId, placeId],
@@ -89,13 +98,14 @@ export async function setAssignment(driverId: number, placeId: number, assigned:
 }
 
 export async function completeTask(id: number, revision: number, actor: { id: number; role: string }) {
+  if (actor.role !== 'DRIVER') throw new TaskError(403, 'فقط پیک می‌تواند وظیفهٔ خودش را انجام‌شده ثبت کند.');
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const [rows] = await connection.execute<(RowDataPacket & { driverId: number; placeId: number; status: string; revision: number })[]>(
       `SELECT driver_id AS driverId, place_id AS placeId, status, revision FROM driver_tasks
-       WHERE id = ? ${actor.role === 'DRIVER' ? 'AND driver_id = ?' : ''} FOR UPDATE`,
-      actor.role === 'DRIVER' ? [id, actor.id] : [id],
+       WHERE id = ? AND driver_id = ? FOR UPDATE`,
+      [id, actor.id],
     );
     const task = rows[0];
     if (!task) throw new TaskError(404, 'وظیفه پیدا نشد.');

@@ -63,7 +63,7 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
   }, [refresh]);
 
   const mutate = useCallback(async (key: string, operation: () => Promise<DriverTask | null>) => {
-    if (!token || inFlight.current.has(key)) return;
+    if (!token || inFlight.current.has(key)) return false;
     inFlight.current.add(key);
     setPending(new Set(inFlight.current));
     request.current?.abort();
@@ -73,7 +73,7 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
     try {
       const task = await operation();
       succeeded = true;
-      if (!mounted.current) return;
+      if (!mounted.current) return false;
       if (task) setTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]
         .filter((item) => item.status !== 'cancelled'));
     } catch (cause) {
@@ -87,12 +87,11 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
         if (!inFlight.current.size && succeeded) void refresh();
       }
     }
+    return succeeded;
   }, [token, refresh, reportError]);
 
-  const assign = useCallback((driverId: number, placeId: number, assigned: boolean) =>
-    mutate(assignmentKey(driverId, placeId), () => api.setAssignment(token!, driverId, placeId, assigned)), [mutate, token]);
-  const complete = useCallback((task: DriverTask) =>
-    mutate(assignmentKey(task.driverId, task.placeId), () => api.completeTask(token!, task)), [mutate, token]);
+  const assign = useCallback((driverId: number, placeId: number, assigned: boolean, options?: { description?: string; revision?: number }) =>
+    mutate(assignmentKey(driverId, placeId), () => api.setAssignment(token!, driverId, placeId, assigned, options)), [mutate, token]);
 
-  return { tasks, loading, error, pending, refresh, assign, complete };
+  return { tasks, loading, error, pending, refresh, assign };
 }
