@@ -2,7 +2,7 @@ import { CalendarDays, Check, Clock3, History, LoaderCircle, RotateCcw, X } from
 import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import { scrollToMapSection } from '../utils/mapMotion';
 import type { HistoryDay } from '../types';
-import { formatHistoryDay, formatHistoryTime, historyDayDate, type TimeRange } from '../utils/historyTime';
+import { formatHistoryDay, formatHistoryTime, historyDayDate, shiftHistoryRange, type TimeRange } from '../utils/historyTime';
 
 interface Props {
   driverName: string;
@@ -37,6 +37,7 @@ export function HistoryTimeline(props: Props) {
   const latestRange = useRef(range);
   const onCommit = useRef(props.onRangeCommit);
   const interaction = useRef({ pointer: false, keyboard: false, dirty: false, timer: 0 });
+  const selectionDrag = useRef<{ pointerId: number; startX: number; startRange: TimeRange; width: number } | null>(null);
   latestRange.current = range;
   onCommit.current = props.onRangeCommit;
   const cancelCommit = () => window.clearTimeout(interaction.current.timer);
@@ -60,6 +61,31 @@ export function HistoryTimeline(props: Props) {
   const finishPointer = () => {
     interaction.current.pointer = false;
     commitRange();
+  };
+  const finishSelectionDrag = () => {
+    selectionDrag.current = null;
+    finishPointer();
+  };
+  const startSelectionDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (dayLoading || dayError) return;
+    const width = event.currentTarget.parentElement?.getBoundingClientRect().width ?? 0;
+    if (!width) return;
+    event.preventDefault();
+    cancelCommit();
+    interaction.current.pointer = true;
+    selectionDrag.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startRange: [...latestRange.current],
+      width,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveSelectionDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = selectionDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const minutes = ((event.clientX - drag.startX) / drag.width) * 720;
+    previewRange(shiftHistoryRange(drag.startRange, minutes));
   };
   const inputEvents = {
     onPointerDown: (event: PointerEvent<HTMLInputElement>) => {
@@ -90,6 +116,7 @@ export function HistoryTimeline(props: Props) {
     current.pointer = false;
     current.keyboard = false;
     current.dirty = false;
+    selectionDrag.current = null;
     return () => window.clearTimeout(current.timer);
   }, [selectedDay]);
   useEffect(() => {
@@ -138,7 +165,11 @@ export function HistoryTimeline(props: Props) {
         </div>
         <div className={`history-range ${disabled ? 'disabled' : ''}`} dir="ltr">
           <div className="history-range-track" />
-          <div className="history-range-selection" style={{ left: `${startPercent}%`, right: `${100 - endPercent}%` }} />
+          <div className="history-range-selection" aria-hidden="true"
+            style={{ left: `${startPercent}%`, right: `${100 - endPercent}%` }}
+            onPointerDown={startSelectionDrag} onPointerMove={moveSelectionDrag}
+            onPointerUp={finishSelectionDrag} onPointerCancel={finishSelectionDrag}
+            onLostPointerCapture={finishSelectionDrag} />
           <input {...inputEvents} type="range" min={720} max={1440} step={1} value={range[0]} disabled={disabled}
             aria-valuemax={range[1] - 1}
             aria-label="ساعت شروع مسیر" aria-valuetext={`${formatHistoryTime(range[0])} به وقت تهران`}
@@ -154,9 +185,7 @@ export function HistoryTimeline(props: Props) {
         <div className="history-range-footer">
           {dayLoading ? <span role="status"><LoaderCircle className="animate-spin" size={14} /> در حال دریافت موقعیت‌های این روز…</span>
             : dayError ? <span role="alert" className="history-range-error">{dayError} <button type="button" onClick={() => props.onSelectDay(selectedDay)}>تلاش مجدد</button></span>
-            : !rangeActive ? <span>با تغییر بازه، مسیر این روز روی نقشه نمایش داده می‌شود.</span>
             : <span role="status">{props.pointCount ? 'مسیر بازهٔ انتخاب‌شده روی نقشه نمایش داده می‌شود.' : 'در این بازهٔ زمانی موقعیتی ثبت نشده است.'}</span>}
-          {!rangeActive && !disabled && <button type="button" className="history-apply" onClick={() => props.onRangeCommit([...range])}>نمایش این بازه</button>}
         </div>
       </div>}
 

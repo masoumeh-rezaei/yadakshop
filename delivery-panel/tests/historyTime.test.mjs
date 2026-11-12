@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterHistoryRange, formatHistoryDay, formatHistoryTime, historyDayKey, rangeTimestamp } from '../src/utils/historyTime.ts';
+import { filterHistoryRange, formatHistoryDay, formatHistoryTime, historyDayKey, rangeTimestamp, shiftHistoryRange } from '../src/utils/historyTime.ts';
 import { buildTimelineSegments, prepareRouteHistory } from '../src/utils/routeHistory.ts';
 
 test('Tehran midnight groups records independently of the browser timezone', () => {
@@ -28,6 +28,12 @@ test('range includes its start and excludes the next midnight and unrelated days
   ].map(([id, recordedAt]) => ({ id, recordedAt }));
   assert.deepEqual(filterHistoryRange(points, '2026-11-05', [720, 1440]).map((point) => point.id), ['start', 'last']);
   assert.deepEqual(filterHistoryRange(points, '2026-11-05', [800, 900]), []);
+});
+
+test('moving the selected range preserves its duration and stays within the day', () => {
+  assert.deepEqual(shiftHistoryRange([780, 900], 60), [840, 960]);
+  assert.deepEqual(shiftHistoryRange([780, 900], -120), [720, 840]);
+  assert.deepEqual(shiftHistoryRange([1320, 1440], 60), [1320, 1440]);
 });
 
 test('range filtering preserves the existing chronological light-to-dark route', () => {

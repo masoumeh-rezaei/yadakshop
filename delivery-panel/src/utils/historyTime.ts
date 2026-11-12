@@ -2,6 +2,12 @@ export type TimeRange = [number, number];
 export const FULL_AFTERNOON: TimeRange = [12 * 60, 24 * 60];
 export const HISTORY_TIME_ZONE = 'Asia/Tehran';
 
+export function shiftHistoryRange(range: TimeRange, delta: number): TimeRange {
+  const duration = range[1] - range[0];
+  const start = Math.min(1440 - duration, Math.max(720, range[0] + Math.round(delta)));
+  return [start, start + duration];
+}
+
 const dayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: HISTORY_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
 });
