@@ -115,7 +115,7 @@ export function useDriverHistory(token: string | null, onUnauthorized: () => voi
     const timeout = window.setTimeout(() => controller.abort(), 15_000);
     const driverId = state.driverId;
     setState((current) => ({
-      ...current, selectedDay: day, range: [...FULL_AFTERNOON], rangeActive: false,
+      ...current, selectedDay: day, range: [...FULL_AFTERNOON], rangeActive: true,
       dayPoints: [], dayLoading: true, dayError: '',
     }));
     try {
