@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { API_URL } from '@/services/api';
+import { TASK_MAP_URL } from '@/services/api';
 import type { DriverTaskMapProps } from '@/types/task';
 
-const mapUrl = process.env.EXPO_PUBLIC_MAP_URL || `${API_URL}/driver-map.html`;
+const mapUrl = TASK_MAP_URL;
 const mapOrigin = new URL(mapUrl).origin;
 
-export function DriverTaskMap({ payload, onSelectTask }: DriverTaskMapProps) {
+export function DriverTaskMap({ payload, onSelectTask, onDestinationAction }: DriverTaskMapProps) {
   const webview = useRef<WebView>(null);
   const latest = useRef(payload);
   latest.current = payload;
@@ -39,6 +39,8 @@ export function DriverTaskMap({ payload, onSelectTask }: DriverTaskMapProps) {
           const message = JSON.parse(event.nativeEvent.data);
           if (message.type === 'delivery:task-map-ready') { setReady(true); setFailed(false); send(); }
           if (message.type === 'delivery:task-selected' && payload.tasks.some((task) => task.id === message.id)) onSelectTask(message.id);
+          if (message.type === 'delivery:task-action' && ['neshan', 'share', 'save'].includes(message.action)
+            && payload.tasks.some(task => task.id === message.id)) onDestinationAction(message.id, message.action);
         } catch { /* Ignore unrelated or malformed bridge messages. */ }
       }} />
     {(!ready || failed) && <View style={styles.overlay}>{failed ? <>

@@ -4,6 +4,7 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { completeTask, listTasks, setAssignment, TaskError } from '../services/tasks.service.js';
 import { emitTasksChanged } from '../realtime.js';
+import { wakePushWorker } from '../services/push.service.js';
 
 const router = Router();
 const validId = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
@@ -31,6 +32,7 @@ router.put('/assignment', authorize('ADMIN'), asyncHandler(async (req, res) => {
   }
   const task = await setAssignment(driverId, placeId, assigned, req.user!.id, description?.trim() || null, revision);
   emitTasksChanged({ driverId, placeId });
+  if (assigned) void wakePushWorker();
   res.json({ success: true, data: task });
 }));
 

@@ -2,6 +2,7 @@ import { Input } from "./ui/FormControls";
 import { Button } from "./ui/Button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bell,
   CircleUserRound,
   ClipboardList,
   LogOut,
@@ -38,6 +39,8 @@ import { useTasks } from '../hooks/useTasks';
 import { TasksPage } from './TasksPage';
 import { TaskAssignmentDialog, type TaskAssignmentSelection } from './TaskAssignmentDialog';
 import { locationTime } from '../utils/locationTime';
+import { useTaskNotifications } from '../hooks/useTaskNotifications';
+import { TaskNotifications } from './TaskNotifications';
 
 type View = "map" | "places" | "users" | "tasks";
 type ConnectionState = "connecting" | "connected" | "disconnected";
@@ -52,6 +55,12 @@ export function Dashboard() {
   const [locations, setLocations] = useState<DriverLocation[]>([]);
   const history = useDriverHistory(token, logout);
   const taskState = useTasks(token, logout);
+  const [completedTaskFocus, setCompletedTaskFocus] = useState<{ id: number; request: number } | null>(null);
+  const openCompletedTask = useCallback((id: number) => {
+    history.close(); setView('tasks');
+    setCompletedTaskFocus(current => ({ id, request: (current?.request || 0) + 1 }));
+  }, [history.close]);
+  const notifications = useTaskNotifications(taskState.tasks, !taskState.loading && !taskState.error, admin?.id, openCompletedTask);
   const [taskDialog, setTaskDialog] = useState<TaskAssignmentSelection | null>(null);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -137,10 +146,11 @@ export function Dashboard() {
       transports: ["websocket", "polling"],
       autoConnect: false,
     });
-    socket.on("connect", () => setConnection("connected"));
+    socket.on("connect", () => { setConnection("connected"); void taskState.refresh(); });
     socket.on("disconnect", () => setConnection("disconnected"));
     socket.on("connect_error", () => setConnection("disconnected"));
     socket.on('tasks:changed', () => { void taskState.refresh(); });
+    socket.on('task:completed', notifications.notify);
     socket.on("location:update", (location: DriverLocation) => {
       setLocations((current) => [
         location,
@@ -154,7 +164,7 @@ export function Dashboard() {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [token, history.appendLocation, taskState.refresh]);
+  }, [token, history.appendLocation, taskState.refresh, notifications.notify]);
   useEffect(() => {
     const timer = window.setInterval(() => loadData(true), 30_000);
     return () => window.clearInterval(timer);
@@ -244,6 +254,7 @@ export function Dashboard() {
     history.close();
   }, [history.close]);
   const changeView = (next: View) => {
+    setCompletedTaskFocus(null);
     history.close();
     setMapFocusRequest(0);
     setPlaceFocusRequest(0);
@@ -469,6 +480,15 @@ export function Dashboard() {
                   : view === 'tasks' ? 'مدیریت وظایف' : "مدیریت کاربران"}
             </h1>
           </div>
+          <div className="topbar-actions">
+          <button type="button" className={`task-notifications-toggle ${notifications.notices.length ? 'has-notices' : ''}`}
+            aria-label={notifications.permission === 'default' ? 'فعال‌سازی اعلان سیستم وظایف' : 'اعلان وظایف'} aria-expanded={notifications.inboxOpen}
+            title={notifications.permission === 'denied' ? 'برای اعلان سیستم، دسترسی اعلان این سایت را در تنظیمات مرورگر فعال کنید.'
+              : notifications.permission === 'unsupported' ? 'اعلان‌ها داخل پنل نمایش داده می‌شوند.' : 'اعلان انجام وظایف روی سیستم'}
+            onClick={() => {
+              if (notifications.permission === 'default') void notifications.enableDesktop();
+              else notifications.setInboxOpen(value => !value);
+            }}><Bell size={17} /><span>{notifications.permission === 'default' ? 'فعال‌سازی اعلان' : 'اعلان‌ها'}</span>{notifications.notices.length > 0 && <b>{notifications.notices.length.toLocaleString('fa-IR')}</b>}</button>
           <div
             className={`connection-badge flex items-center gap-[8px] p-[9px_12px] text-[#b54708] [background:#fff4e5] [border:1px_solid_#fed7aa] rounded-[9px] text-[11px] [&.connected]:text-[#08785f] [&.connected]:[background:#eafaf5] [&.connected]:[border-color:#b9eedc] [@media(max-width:640px)]:[&&]:p-[8px] [@media(max-width:640px)]:[&&]:[&_svg]:hidden ${connection}`}
           >
@@ -478,6 +498,7 @@ export function Dashboard() {
               <WifiOff size={16} />
             )}
             {connection === "connected" ? "ارتباط زنده" : "ارتباط قطع است"}
+          </div>
           </div>
         </header>
         {error && (
@@ -665,6 +686,7 @@ export function Dashboard() {
           </section>
         ) : view === 'tasks' ? (
           <TasksPage tasks={taskState.tasks} loading={taskState.loading} error={taskState.error}
+            focusedTaskId={completedTaskFocus?.id} focusRequest={completedTaskFocus?.request}
             pending={taskState.pending} onRefresh={() => { void taskState.refresh(); }}
             onCancel={(task) => setTaskDialog({ driverId: task.driverId, placeId: task.placeId, assigned: false, revision: task.revision })}
             onShowPlace={showTaskPlace} />
@@ -709,6 +731,8 @@ export function Dashboard() {
           </>
         )}
       </main>
+      {notifications.inboxOpen && <TaskNotifications notices={notifications.notices} onDismiss={notifications.dismiss}
+        onOpen={id => { openCompletedTask(id); notifications.setInboxOpen(false); }} onClose={() => notifications.setInboxOpen(false)} />}
       {taskDialog && <TaskAssignmentDialog
         selection={taskDialog}
         driverName={assignmentDriver?.fullName || assignmentDriver?.phone || 'پیک'}

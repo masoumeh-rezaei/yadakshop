@@ -8,10 +8,12 @@
     "scheme": "deliveryapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": { "LSApplicationQueriesSchemes": ["neshan"] }
     },
     "android": {
       "package": "com.yadakshop.deliveryapp",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -37,6 +39,7 @@
       "./plugins/with-app-exit-info",
       "./plugins/with-android-apk-splits",
       "expo-router",
+      ["expo-notifications", { "color": "#0f766e", "defaultChannel": "tasks" }],
       [
         "expo-location",
         {

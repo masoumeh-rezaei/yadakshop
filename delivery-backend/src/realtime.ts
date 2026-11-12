@@ -17,7 +17,7 @@ export interface RealtimeLocation {
   recordedAt: string;
 }
 
-interface AdminRow extends RowDataPacket {
+interface RealtimeUserRow extends RowDataPacket {
   id: number;
   role: 'ADMIN' | 'DRIVER';
   is_active: number;
@@ -32,24 +32,29 @@ export const initializeRealtime = (httpServer: HttpServer) => {
 
   io.use(async (socket, next) => {
     try {
-      // اتصال WebSocket هم مانند REST مستقل احراز هویت می‌شود و فقط مدیر اجازه اتصال دارد.
+      // Each connection is authenticated independently; clients cannot choose their room or driver ID.
       const rawToken = socket.handshake.auth?.token;
       if (typeof rawToken !== 'string' || !rawToken) return next(new Error('unauthorized'));
       const payload = jwt.verify(rawToken, env.jwtSecret) as TokenPayload;
-      const [rows] = await pool.execute<AdminRow[]>(
+      const [rows] = await pool.execute<RealtimeUserRow[]>(
         'SELECT id, role, is_active FROM users WHERE id = ? LIMIT 1',
         [payload.sub],
       );
       const user = rows[0];
-      if (!user || !user.is_active || user.role !== 'ADMIN') return next(new Error('forbidden'));
+      if (!user || !user.is_active || !['ADMIN', 'DRIVER'].includes(user.role)) return next(new Error('forbidden'));
       socket.data.userId = Number(user.id);
+      socket.data.role = user.role;
       next();
     } catch {
       next(new Error('unauthorized'));
     }
   });
 
-  io.on('connection', (socket) => socket.join('admins'));
+  io.on('connection', (socket) => {
+    socket.join(`user:${socket.data.userId}`);
+    socket.join(socket.data.role === 'ADMIN' ? 'admins' : `driver:${socket.data.userId}`);
+    if (socket.data.role === 'DRIVER') socket.join('drivers');
+  });
   return io;
 };
 
@@ -60,4 +65,20 @@ export const emitLocationUpdate = (location: RealtimeLocation) => {
 
 export const emitTasksChanged = (change: { driverId?: number; placeId?: number }) => {
   io?.to('admins').emit('tasks:changed', change);
+  if (change.driverId) io?.to(`driver:${change.driverId}`).emit('tasks:changed', change);
+  // Place edits/removal affect potentially several couriers; only invalidate, never send task data.
+  else if (change.placeId) io?.to('drivers').emit('tasks:changed', {});
 };
+
+export interface CompletedTaskEvent {
+  id: number; revision: number; driverId: number; driverName: string | null;
+  driverPhone: string; placeId: number; placeName: string; completedAt: Date | string | null;
+}
+export const emitTaskCompleted = (task: CompletedTaskEvent) => {
+  io?.to('admins').emit('task:completed', {
+    id: task.id, revision: task.revision, driverId: task.driverId, driverName: task.driverName,
+    driverPhone: task.driverPhone, placeId: task.placeId, placeName: task.placeName, completedAt: task.completedAt,
+  });
+};
+
+export const disconnectUser = (userId: number) => io?.in(`user:${userId}`).disconnectSockets(true);

@@ -1,5 +1,7 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import pool from '../config/database.js';
+import { queueAssignmentPush } from './push.service.js';
+import { emitTaskCompleted } from '../realtime.js';
 
 export interface TaskRow extends RowDataPacket {
   id: number;
@@ -61,6 +63,7 @@ export async function setAssignment(driverId: number, placeId: number, assigned:
     );
     if (!places.length) throw new TaskError(404, 'مکان پیدا نشد.');
 
+    const previous = assigned ? await readTask(connection, driverId, placeId) : null;
     if (assigned) {
       // Preserve the original assignment on duplicate retries; reopen a completed/cancelled pair.
       await connection.execute(
@@ -87,6 +90,7 @@ export async function setAssignment(driverId: number, placeId: number, assigned:
       );
     }
     const task = await readTask(connection, driverId, placeId);
+    if (assigned && task && task.revision !== previous?.revision) await queueAssignmentPush(connection, task);
     await connection.commit();
     return task;
   } catch (error) {
@@ -119,6 +123,7 @@ export async function completeTask(id: number, revision: number, actor: { id: nu
     );
     const updated = await readTask(connection, task.driverId, task.placeId);
     await connection.commit();
+    if (task.status === 'pending' && updated) emitTaskCompleted(updated);
     return updated!;
   } catch (error) {
     await connection.rollback();

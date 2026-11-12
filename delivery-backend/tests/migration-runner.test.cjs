@@ -54,3 +54,11 @@ test('task description migration runs independently without recreating tasks or 
   assert.ok(result.queries.some(sql => sql.includes('ADD COLUMN description TEXT NULL')));
   assert.ok(result.queries.every(sql => !/INSERT INTO|CREATE TABLE|DELETE FROM/.test(sql)));
 });
+
+test('push migration targets device/outbox tables without replaying place or task data', () => {
+  const result = runMigration('004_create_push_notifications.sql');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Applied 004_create_push_notifications.sql/);
+  assert.ok(result.queries.some(sql => sql.includes('CREATE TABLE IF NOT EXISTS task_push_jobs')));
+  assert.ok(result.queries.every(sql => !/INSERT INTO saved_places|UPDATE driver_tasks|DELETE FROM/.test(sql)));
+});

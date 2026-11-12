@@ -6,6 +6,9 @@ const jwt = require('jsonwebtoken');
 const pool = require('../dist/config/database.js').default;
 const events = [];
 require('../dist/realtime.js').emitTasksChanged = change => events.push(change);
+const completionEvents = [];
+require('../dist/realtime.js').emitTaskCompleted = task => completionEvents.push({ ...task });
+require('../dist/services/push.service.js').wakePushWorker = async () => {};
 const users = new Map([
   [1, { id: 1, role: 'ADMIN', is_active: 1, phone: '09120000001', full_name: 'Admin' }],
   [2, { id: 2, role: 'DRIVER', is_active: 1, phone: '09120000002', full_name: 'Driver 2' }],
@@ -14,6 +17,8 @@ const users = new Map([
 ]);
 const places = new Map([[10, { id: 10, name: 'First place', latitude: 35.68, longitude: 51.38 }], [11, { id: 11, name: 'Second place', latitude: 35.69, longitude: 51.39 }]]);
 let tasks = new Map();
+let pushJobs = new Set();
+let failEnqueue = false;
 let nextId = 1;
 let releases = 0;
 let rollbacks = 0;
@@ -38,14 +43,20 @@ pool.execute = async (sql, params) => read(sql, params, tasks);
 pool.query = async (sql) => { checkTable(sql); return [[]]; };
 pool.getConnection = async () => {
   let working;
+  let workingPushJobs;
   return {
-    beginTransaction: async () => { working = new Map([...tasks].map(([id, task]) => [id, { ...task }])); },
-    commit: async () => { tasks = working; },
+    beginTransaction: async () => { working = new Map([...tasks].map(([id, task]) => [id, { ...task }])); workingPushJobs = new Set(pushJobs); },
+    commit: async () => { tasks = working; pushJobs = workingPushJobs; },
     rollback: async () => { rollbacks += 1; },
     release: () => { releases += 1; },
     execute: async (rawSql, params) => {
       const sql = rawSql.replace(/\s+/g, ' ').trim();
       checkTable(sql);
+      if (sql.startsWith('INSERT IGNORE INTO task_push_jobs')) {
+        if (failEnqueue) throw new Error('Simulated outbox failure');
+        workingPushJobs.add(`${params[0]}:${params[1]}`);
+        return [{ affectedRows: 1 }];
+      }
       if (sql.startsWith('SELECT role,')) {
         assert.match(sql, /FOR UPDATE$/);
         const user = users.get(params[0]);
@@ -136,6 +147,7 @@ test('assignment from either selector is idempotent and emits after commit', asy
   assert.equal(second.body.data.revision, 1);
   assert.equal(second.body.data.description, first.body.data.description);
   assert.equal(tasks.size, 1);
+  assert.equal(pushJobs.size, 1);
   assert.deepEqual(events.at(-1), { driverId: 2, placeId: 10 });
 });
 test('mobile list is scoped to the authenticated driver, ignoring forged query IDs', async () => {
@@ -154,6 +166,7 @@ test('a driver cannot complete another driver task or supply an invalid revision
   assert.equal(tasks.get(ownTask.id).status, 'pending');
 });
 test('completion is idempotent and completed tasks remain visible on both clients', async () => {
+  const before = completionEvents.length;
   const task = [...tasks.values()].find(item => item.driverId === 2);
   const result = await request(`/${task.id}/complete`, 2, 'PATCH', { revision: 1 });
   assert.equal(result.status, 200);
@@ -162,6 +175,9 @@ test('completion is idempotent and completed tasks remain visible on both client
   const repeated = await request(`/${task.id}/complete`, 2, 'PATCH', { revision: 1 });
   assert.equal(repeated.body.data.revision, 2);
   assert.equal(repeated.body.data.completedAt, result.body.data.completedAt);
+  assert.equal(completionEvents.length, before + 1);
+  assert.equal(completionEvents.at(-1).id, task.id);
+  assert.equal(tasks.get(task.id).status, 'completed');
   assert.equal((await request('/mine', 2)).body.data[0].status, 'completed');
   assert.equal((await request('/mine', 2)).body.data[0].description, result.body.data.description);
 });
@@ -229,4 +245,19 @@ test('deployment health requires the task schema and refuses an unprepared datab
   console.error = () => {};
   try { assert.equal((await fetch(healthUrl)).status, 503); }
   finally { tableAvailable = true; console.error = originalError; }
+});
+
+test('assignment and its notification outbox commit atomically', async () => {
+  const count = tasks.size;
+  const jobCount = pushJobs.size;
+  const eventCount = events.length;
+  failEnqueue = true;
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    assert.equal((await assign(3, 10)).status, 500);
+    assert.equal(tasks.size, count);
+    assert.equal(pushJobs.size, jobCount);
+    assert.equal(events.length, eventCount);
+  } finally { failEnqueue = false; console.error = originalError; }
 });

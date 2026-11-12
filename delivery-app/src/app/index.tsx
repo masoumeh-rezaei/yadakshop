@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   AppState,
   KeyboardAvoidingView,
+  Keyboard,
   PermissionsAndroid,
   Platform,
   SafeAreaView,
@@ -28,6 +29,9 @@ import {
 export default function HomeScreen() {
   const { user, token, isLoading, login, logout } = useAuth();
   const passwordInputRef = useRef<TextInput>(null);
+  const loginScroll = useRef<ScrollView>(null);
+  const dashboardScroll = useRef<ScrollView>(null);
+  const passwordFocused = useRef(false);
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -36,6 +40,52 @@ export default function HomeScreen() {
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [locationStatus, setLocationStatus] = useState('موقعیت مکانی هنوز فعال نشده است.');
   const [lastLocation, setLastLocation] = useState<Location.LocationObject | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
+  const locationRequest = useRef(false);
+
+  useEffect(() => {
+    const listener = Keyboard.addListener('keyboardDidShow', () => {
+      if (passwordFocused.current) loginScroll.current?.scrollToEnd({ animated: true });
+    });
+    return () => listener.remove();
+  }, []);
+
+  useEffect(() => {
+    if (user?.role !== 'DRIVER') return;
+    let mounted = true;
+    let generation = 0;
+    let watcher: Location.LocationSubscription | null = null;
+    const updateWatcher = async () => {
+      const current = ++generation;
+      watcher?.remove(); watcher = null;
+      if (AppState.currentState !== 'active') return;
+      const permission = await Location.getForegroundPermissionsAsync();
+      if (!permission.granted || !mounted || current !== generation) return;
+      const subscription = await Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 }, location => {
+        if (mounted && current === generation) setLastLocation(previous => !previous || location.timestamp >= previous.timestamp ? location : previous);
+      });
+      if (!mounted || current !== generation) subscription.remove(); else watcher = subscription;
+    };
+    void updateWatcher().catch(() => {});
+    const subscription = AppState.addEventListener('change', () => { void updateWatcher().catch(() => {}); });
+    return () => { mounted = false; generation += 1; watcher?.remove(); subscription.remove(); };
+  }, [user?.id, user?.role, isTracking, locationPermissionGranted]);
+
+  const locateMe = async () => {
+    if (locationRequest.current) return;
+    locationRequest.current = true;
+    setLocating(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) throw new Error('برای نمایش موقعیت من، دسترسی موقعیت را در تنظیمات گوشی فعال کنید.');
+      setLocationPermissionGranted(true);
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      setLastLocation(previous => !previous || location.timestamp >= previous.timestamp ? location : previous);
+    } catch (cause) {
+      throw new Error(cause instanceof Error && cause.message.includes('دسترسی') ? cause.message : 'موقعیت فعلی دریافت نشد؛ GPS و دسترسی موقعیت را بررسی کنید.');
+    } finally { locationRequest.current = false; setLocating(false); }
+  };
 
   useEffect(() => {
     if (user?.role !== 'DRIVER') return;
@@ -49,7 +99,7 @@ export default function HomeScreen() {
     ]).then(([trackingState, location]) => {
       if (!mounted) return;
       setIsTracking(trackingState.active);
-      setLastLocation(location);
+      setLastLocation(previous => location && (!previous || location.timestamp >= previous.timestamp) ? location : previous);
       if (trackingState.wasStoppedByUser) {
         setLocationStatus('ارسال موقعیت با توقف برنامه از پنل گوشی متوقف شده است.');
       } else if (trackingState.active) {
@@ -130,6 +180,7 @@ export default function HomeScreen() {
   const handleLogout = async () => {
     await stopBackgroundTracking().catch(() => undefined);
     setIsTracking(false);
+    setLastLocation(null);
     await logout();
   };
 
@@ -145,6 +196,8 @@ export default function HomeScreen() {
     setError('');
     try {
       await login(normalizedPhone, password);
+      passwordFocused.current = false;
+      setPassword('');
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'ورود ناموفق بود.');
     } finally {
@@ -159,9 +212,11 @@ export default function HomeScreen() {
   if (user) {
     return (
       <SafeAreaView style={styles.page}>
-        <ScrollView contentContainerStyle={styles.dashboardContent}>
+        <ScrollView ref={dashboardScroll} contentContainerStyle={styles.dashboardContent}>
           {user.role === 'DRIVER' && token && <DriverTasks key={user.id} token={token} userId={user.id}
             currentLocation={lastLocation ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude } : null}
+            onLocateMe={locateMe} locating={locating}
+            onFocusMap={() => dashboardScroll.current?.scrollTo({ y: 0, animated: true })}
             onUnauthorized={() => { void handleLogout(); }} />}
           <View style={styles.dashboardCard}>
             <View style={[styles.statusDot, !isTracking && styles.statusDotInactive]} />
@@ -211,8 +266,12 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.page}>
-      <KeyboardAvoidingView style={styles.loginKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.loginKeyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
+          ref={loginScroll} style={styles.loginKeyboard}
+          onLayout={() => {
+            if (passwordFocused.current) requestAnimationFrame(() => loginScroll.current?.scrollToEnd({ animated: true }));
+          }}
           contentContainerStyle={styles.loginScrollContent}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
@@ -225,11 +284,16 @@ export default function HomeScreen() {
             <TextInput style={styles.input} placeholder="09123456789" placeholderTextColor="#94a3b8" value={phone}
               onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" textAlign="right"
               editable={!submitting} autoFocus returnKeyType="next" submitBehavior="submit"
+              onFocus={() => { passwordFocused.current = false; }}
               onSubmitEditing={() => passwordInputRef.current?.focus()} />
             <Text style={styles.label}>رمز عبور</Text>
             <TextInput ref={passwordInputRef} style={styles.input} placeholder="رمز عبور"
               placeholderTextColor="#94a3b8" value={password} onChangeText={setPassword} secureTextEntry
               autoComplete="current-password" textAlign="right" editable={!submitting} returnKeyType="done"
+              onFocus={() => {
+                passwordFocused.current = true;
+                requestAnimationFrame(() => loginScroll.current?.scrollToEnd({ animated: true }));
+              }}
               onSubmitEditing={handleLogin} />
             {!!error && <Text style={styles.error}>{error}</Text>}
             <TouchableOpacity style={[styles.button, submitting && styles.buttonDisabled]} onPress={handleLogin} disabled={submitting}>
@@ -248,7 +312,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', padding: 20 },
   loginKeyboard: { flex: 1 },
   loginScrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingVertical: 32 },
-  card: { backgroundColor: '#fff', borderRadius: 22, padding: 24, elevation: 4, shadowColor: '#0f172a', shadowOpacity: 0.08, shadowRadius: 20 },
+  card: { width: '100%', maxWidth: 480, alignSelf: 'center', backgroundColor: '#fff', borderRadius: 22, padding: 24, elevation: 4, shadowColor: '#0f172a', shadowOpacity: 0.08, shadowRadius: 20 },
   eyebrow: { color: '#2563eb', textAlign: 'center', fontWeight: '700', marginBottom: 10 },
   title: { color: '#0f172a', fontSize: 28, fontWeight: '800', textAlign: 'center' },
   subtitle: { color: '#64748b', fontSize: 14, lineHeight: 23, textAlign: 'center', marginTop: 8, marginBottom: 28 },
