@@ -4,7 +4,7 @@ import type { DriverTask } from '../types';
 
 export const assignmentKey = (driverId: number, placeId: number) => `${driverId}:${placeId}`;
 
-export function useTasks(token: string | null, onUnauthorized: () => void) {
+export function useTasks(token: string | null, onUnauthorized: () => void, realtimeConnected = false) {
   const [tasks, setTasks] = useState<DriverTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,10 +25,9 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
       : cause instanceof Error ? cause.message : 'ارتباط با بخش وظایف ناموفق بود.');
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<void> => {
     if (!token) return;
-    if (inFlight.current.size) { queuedRefresh.current = true; return; }
-    request.current?.abort();
+    if (inFlight.current.size || request.current) { queuedRefresh.current = true; return; }
     const controller = new AbortController();
     request.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 15_000);
@@ -48,6 +47,9 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
       if (request.current === controller) {
         request.current = null;
         if (mounted.current) setLoading(false);
+        if (mounted.current && queuedRefresh.current && !inFlight.current.size) {
+          queuedRefresh.current = false; void refresh();
+        }
       }
     }
   }, [token, reportError]);
@@ -58,17 +60,22 @@ export function useTasks(token: string | null, onUnauthorized: () => void) {
     setDescriptionsAvailable(false);
     setLoading(true);
     void refresh();
-    const timer = window.setInterval(() => { if (!document.hidden) void refresh(); }, 20_000);
     const onVisible = () => { if (!document.hidden) void refresh(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       mounted.current = false;
       request.current?.abort();
       request.current = null;
-      window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!token) return;
+    // Keep background tabs current as well; sockets may be unavailable or reconnecting.
+    const timer = window.setInterval(() => { void refresh(); }, realtimeConnected ? 20_000 : 5000);
+    return () => window.clearInterval(timer);
+  }, [refresh, token, realtimeConnected]);
 
   const mutate = useCallback(async (key: string, operation: () => Promise<DriverTask | null>) => {
     if (!token || inFlight.current.has(key)) return false;

@@ -53,8 +53,9 @@ export function Dashboard() {
   const [view, setView] = useState<View>("map");
   const [users, setUsers] = useState<User[]>([]);
   const [locations, setLocations] = useState<DriverLocation[]>([]);
+  const [connection, setConnection] = useState<ConnectionState>("connecting");
   const history = useDriverHistory(token, logout);
-  const taskState = useTasks(token, logout);
+  const taskState = useTasks(token, logout, connection === 'connected');
   const [completedTaskFocus, setCompletedTaskFocus] = useState<{ id: number; request: number } | null>(null);
   const openCompletedTask = useCallback((id: number) => {
     history.close(); setView('tasks');
@@ -84,7 +85,6 @@ export function Dashboard() {
   }, [history.driverId, history.selectedDay, history.rangeActive, history.dayLoading, history.dayError, history.dayPoints]);
   const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
   const [placeFocusRequest, setPlaceFocusRequest] = useState(0);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -482,13 +482,13 @@ export function Dashboard() {
           </div>
           <div className="topbar-actions">
           <button type="button" className={`task-notifications-toggle ${notifications.notices.length ? 'has-notices' : ''}`}
-            aria-label={notifications.permission === 'default' ? 'فعال‌سازی اعلان سیستم وظایف' : 'اعلان وظایف'} aria-expanded={notifications.inboxOpen}
+            aria-label={notifications.permission === 'default' || (notifications.soundEnabled && !notifications.soundReady) ? 'فعال‌سازی اعلان و صدای وظایف' : 'اعلان وظایف'} aria-expanded={notifications.inboxOpen}
             title={notifications.permission === 'denied' ? 'برای اعلان سیستم، دسترسی اعلان این سایت را در تنظیمات مرورگر فعال کنید.'
               : notifications.permission === 'unsupported' ? 'اعلان‌ها داخل پنل نمایش داده می‌شوند.' : 'اعلان انجام وظایف روی سیستم'}
             onClick={() => {
-              if (notifications.permission === 'default') void notifications.enableDesktop();
+              if (notifications.permission === 'default' || (notifications.soundEnabled && !notifications.soundReady)) void notifications.enableDesktop();
               else notifications.setInboxOpen(value => !value);
-            }}><Bell size={17} /><span>{notifications.permission === 'default' ? 'فعال‌سازی اعلان' : 'اعلان‌ها'}</span>{notifications.notices.length > 0 && <b>{notifications.notices.length.toLocaleString('fa-IR')}</b>}</button>
+            }}><Bell size={17} /><span>{notifications.permission === 'default' || (notifications.soundEnabled && !notifications.soundReady) ? 'فعال‌سازی اعلان و صدا' : 'اعلان‌ها'}</span>{notifications.notices.length > 0 && <b>{notifications.notices.length.toLocaleString('fa-IR')}</b>}</button>
           <div
             className={`connection-badge flex items-center gap-[8px] p-[9px_12px] text-[#b54708] [background:#fff4e5] [border:1px_solid_#fed7aa] rounded-[9px] text-[11px] [&.connected]:text-[#08785f] [&.connected]:[background:#eafaf5] [&.connected]:[border-color:#b9eedc] [@media(max-width:640px)]:[&&]:p-[8px] [@media(max-width:640px)]:[&&]:[&_svg]:hidden ${connection}`}
           >
@@ -732,6 +732,8 @@ export function Dashboard() {
         )}
       </main>
       {notifications.inboxOpen && <TaskNotifications notices={notifications.notices} onDismiss={notifications.dismiss}
+        permission={notifications.permission} soundEnabled={notifications.soundEnabled} soundReady={notifications.soundReady}
+        feedback={notifications.feedback} onEnable={notifications.enableDesktop} onToggleSound={notifications.toggleSound} onTest={notifications.testAlert}
         onOpen={id => { openCompletedTask(id); notifications.setInboxOpen(false); }} onClose={() => notifications.setInboxOpen(false)} />}
       {taskDialog && <TaskAssignmentDialog
         selection={taskDialog}

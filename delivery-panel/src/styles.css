@@ -144,6 +144,14 @@
   .task-notifications button { font: inherit; border: 0; background: transparent; }
   .task-notifications > header button { display: grid; place-items: center; padding: 4px; color: #94a3b8; }
   .task-notifications-list { overflow: auto; overscroll-behavior: contain; }
+  .task-alert-settings { padding: 12px 16px; border-bottom: 1px solid #edf2ef; background: #f8fbfa; flex: 0 0 auto; }
+  .task-alert-settings p { margin: 0 0 8px; font-size: 11px; line-height: 1.9; color: #64748b; }
+  .task-alert-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+  .task-alert-controls button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px solid #dce6e0; border-radius: 8px; color: #52665c; background: #fff; font-size: 11px; }
+  .task-alert-controls button.enabled { color: #08785f; background: #eafaf5; border-color: #b9eedc; }
+  .task-alert-settings .task-alert-help { margin: 9px 0 0; color: #9a6700; }
+  .task-alert-settings .task-alert-feedback { margin: 9px 0 0; color: #08785f; }
+  .task-alert-controls button:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
   .task-notifications-list article { display: flex; align-items: flex-start; gap: 10px; padding: 16px; border-bottom: 1px solid #edf2ef; }
   .task-notification-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: #e9f9f1; color: #0f9475; }
   .task-notification-content { min-width: 0; flex: 1; display: grid; gap: 7px; padding: 0; text-align: right; }
