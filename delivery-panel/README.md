@@ -82,6 +82,41 @@ assignment/completion timestamps and elapsed time. The notification inbox works
 across panel views; optional desktop notifications need browser permission and
 an open panel tab.
 
+To enable audible completion alerts, click **فعال‌سازی اعلان و صدا** once and
+allow browser notifications. The inbox offers a local test chime/desktop alert
+and a sound toggle saved per administrator and synchronized between panel tabs.
+Browser audio is unlocked from a user gesture; a page reload re-arms it on the
+next click or key press. A completion plays a short local Web Audio chime, shows
+the courier/destination in a desktop notification, and marks a hidden tab title.
+Clicking the system notification focuses the corresponding completed task.
+Desktop notifications request persistence until dismissed where supported.
+
+Completions are deduplicated by task/revision; IndexedDB transactions coordinate
+sound and desktop delivery independently between tabs. A Web Locks/storage
+fallback is used when IndexedDB is unavailable. Historical completed tasks do not
+alert on initial load. Denied system permission does not block the sound/inbox.
+Connected panels reconcile every 20 seconds and disconnected panels every five
+seconds, including in background tabs. Socket events refresh immediately and
+slow reads are coalesced rather than repeatedly aborted. The legacy production
+backend's `tasks:changed` event is supported without a database migration.
+The tab must remain open, and browser/OS mute or Do Not Disturb can suppress
+audible or system alerts. No closed-browser web push is added by this feature.
+
+The browser regression uses real Web Audio and IndexedDB with mocked desktop
+notifications/API data, so it never reads or modifies live task records. To run
+it optionally from `delivery-panel` (Playwright is not a production dependency):
+
+```sh
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium
+npm run build
+node tests/notifications.browser.mjs
+```
+
+`CHROME_PATH` can select an installed Chrome instead. The check covers hidden
+tabs, concurrent deliveries, duplicate events, denied permissions, mute/reload,
+notification navigation, disconnected polling and 6.5-second responses.
+
 `/api/tasks/capabilities` advertises instruction support. While an older backend
 is deployed, its 404 response disables the description field, keeping blank
 assignment/cancellation available without silently dropping written instructions.

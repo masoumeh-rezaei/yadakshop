@@ -4,7 +4,7 @@ import { formatTaskTimestamp, taskElapsed } from '../src/utils/taskTime.ts';
 import { taskElapsed as appElapsed, formatTaskTimestamp as appTimestamp } from '../../delivery-app/src/utils/task-time.ts';
 import { destinationLink, validDestination } from '../../delivery-app/src/utils/destination-links.ts';
 import { taskMapUrl } from '../../delivery-app/src/utils/task-map-url.ts';
-import { readCompletionNotice, completionKey } from '../src/hooks/useTaskNotifications.ts';
+import { readCompletionNotice, completionKey } from '../src/utils/taskCompletion.ts';
 
 test('task dates use Tehran time, Persian calendar, and seconds on both clients', () => {
   const value = '2026-11-12T08:51:32Z';
