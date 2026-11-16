@@ -8,7 +8,7 @@ if ! id peikdeploy >/dev/null 2>&1; then
   useradd --system --home-dir /var/lib/peik-upload --shell /bin/bash peikdeploy
 fi
 install -d -m 750 -o root -g peikdeploy /var/lib/peik-upload /var/lib/peik-upload/.ssh
-for file in deploy.py publish.py check-runtime.cjs candidate.cjs receive.py bootstrap.py; do
+for file in deploy.py publish.py check-runtime.cjs candidate.cjs receive.py bootstrap.py migrations.py database-config.cjs; do
   install -m 755 -o root -g root "$stage/$file" "/usr/local/libexec/peik-deploy/$file"
 done
 ln -sfn /usr/local/libexec/peik-deploy/deploy.py /usr/local/bin/peik-deploy

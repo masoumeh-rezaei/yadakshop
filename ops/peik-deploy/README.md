@@ -14,30 +14,12 @@ The deploy job downloads only its own build artifact, verifies its checksum, and
 uses a dedicated SSH key. Actions are pinned to reviewed commit SHAs. The build
 job has no deployment secrets. No GitHub runner is installed on the WHM server.
 
-## Panel release while database preparation is pending
+## Backend selection
 
-`.github/peik-release.json` can pin `backendRef` to an exact ancestor commit,
-with a required explanation. The current pin is the last successful production
-backend, `5e182ed3cb3c2a8addc65b75254fb2b1c4f1a14e`. CI still builds/tests the
-current backend and panel, then separately builds/tests and packages the pinned
-backend with its own lockfile and migrations. `backend/release-source.json`
-records both source commits. The current panel is always packaged.
-
-This publishes the panel while keeping the backend on its prepared schema.
-The existing migration fingerprint, candidate checks, main-only restriction,
-promotion and rollback checks all remain active; a mismatching backend pin
-still stops at the server's migration gate. No SQL is executed by CI.
-
-The panel checks the authenticated task capabilities endpoint. An older backend
-returns 404, which disables optional instructions instead of silently discarding
-them; assignment/cancellation, task times, maps and notifications from reconciled
-completions remain usable. Driver sockets and mobile remote push still need the
-new backend. Capabilities automatically enable descriptions after that upgrade.
-
-To release the new backend, prepare production migrations `003` and `004`, set
-`backendRef` to `null` in a reviewed PR, then record the schema approval for the
-resulting current-main SHA and rerun deployment as described below. Never unset
-the pin as a substitute for preparing and approving the database.
+`.github/peik-release.json` now uses `backendRef: null`, so each release includes
+the current backend and its compiled migration runner. `backend/release-source.json`
+records both source commits. The optional ancestor pin is retained for recovery;
+a backend predating the tracked migration runner cannot use automatic migration.
 
 ## Server boundary
 
@@ -53,7 +35,8 @@ The runtime is the official Node 22.14.0 distribution checked against its pinned
 SHA-256. The application environment is `/opt/peik-deploy/shared/backend.env`
 with mode 640 and access limited to root and the application group.
 
-Before promotion, a candidate binds to loopback port 3001. Read-only checks cover
+After migrations and before promotion, a candidate binds to loopback port 3001.
+Its background push worker is disabled. Read-only checks cover
 the expected tables, health, authenticated API reads, authenticated Socket.IO,
 and rejection of an unauthenticated socket. No rows are created or changed.
 
@@ -91,26 +74,40 @@ that exact current SHA and rerun the GitHub workflow:
 peik-deploy resume <current-main-SHA>
 ```
 
-Migration scripts and `create-admin` are never run by the pipeline. If SQL
-migration files differ from the current release, deployment stops before
-promotion. Review compatibility and the backup/restore plan, prepare the database
-separately, then record approval for that exact SHA and rerun the workflow:
+Every deployment invokes the compiled migration runner before candidate startup
+or promotion. The runner applies pending SQL files in numeric order and records
+their SHA-256 checksums in `peik_schema_migrations`. Repeat deployments skip
+applied files. Changed/deleted applied files and unfinished/failed migrations
+stop deployment. A database advisory lock also serializes manual migration runs.
+Existing migrations 001/002 are baselined only after checking their table columns
+and unique indexes, preserving saved-place edits instead of replaying the seed.
 
-```sh
-peik-deploy approve-schema <current-main-SHA>
-```
+Before pending SQL or initial baselining, `migrations.py` dumps this application's
+database with `--single-transaction`, including routines, events and triggers.
+It verifies the compressed SQL against its SHA-256 before allowing migration.
+Root-only backups and metadata are retained under
+`/var/lib/peik-deploy/database-backups/`; monitor their size and retain recovery
+copies before pruning them. A failed dump or migration leaves the active code
+and panel untouched. Application SQL runs as `peikydsp` with bounded lock waits
+and a four-minute transient systemd unit, never as root. No compiler or npm
+installation is needed on production. `create-admin` remains manual.
 
-This command records a review; it executes no SQL. Code rollback cannot undo a
-database change. Do not automate restoration of a live database during code
-rollback.
+MySQL/MariaDB DDL commits implicitly: partial schema changes cannot be undone by
+the runner. Inspect a failed/running entry and its backup before an explicit
+`node dist/scripts/migrate.js --retry <exact-filename>` from that backend directory
+with `DOTENV_CONFIG_PATH=/opt/peik-deploy/shared/backend.env`, as `peikydsp`.
+Write additive migrations compatible with the currently running backend. Code
+rollback restores code/panel only; it never restores a live database or erases
+concurrent user writes. `approve-schema` remains a legacy bookkeeping command
+and is no longer required for normal deployment.
 
 The courier history feature uses the existing database schema. Its optional
 index tuning script is documented in `delivery-backend/maintenance/README.md`
 and is not a required migration or included in the application artifact. Moving
 this performance-only operation out of required migrations restores the same
 migration fingerprint as the pre-history release. Database latency should be
-assessed separately for large location tables. Required migration changes still
-stop deployment for manual schema review.
+assessed separately for large location tables. Required migrations run through
+the backed-up, tracked deployment path described above.
 
 The original service definition and a baseline release are retained. The
 original backend directory remains available for recovery. Deployment helper

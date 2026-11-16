@@ -37,7 +37,7 @@ service-worker/web-push implementation for closed browser tabs.
 This feature needs a new table. `002_create_driver_tasks.sql` is a required
 migration, not optional index maintenance. It derives numeric foreign-key column
 types from the existing parent tables, including signedness. Apply `001` first
-on a new database; an existing installation should apply only `002` to avoid
+on a new database. The tracked runner baselines existing tables without
 rerunning the original saved-place seed/upsert.
 
 After backup and compatibility review, from a checkout containing this feature:
@@ -65,16 +65,15 @@ provider acceptance is not a guarantee that a device displayed the notification.
 The runner validates the exact filename before opening a database connection.
 Alternatively import only that SQL file into the selected database using
 phpMyAdmin. The table creation is idempotent. MySQL DDL can commit implicitly;
-the runner's transaction wrapper is not a promise of schema rollback.
+the runner records partial failures instead of promising schema rollback.
 
-Production migration and approval remain manual, as documented in
-`ops/peik-deploy/README.md`. After preparing the database, the administrator must
-record `peik-deploy approve-schema <current-main-SHA>` and rerun the current main
-deployment. The pipeline never executes SQL. Before preparation, task endpoints
+Production runs pending migrations automatically after a verified database dump,
+as documented in `ops/peik-deploy/README.md`. No schema approval command is needed.
+Applied checksums are immutable; failed migrations stop activation. Before preparation, task endpoints
 return a clear 503 while existing map/location endpoints remain available.
 The API health check also verifies the required task columns without reading
 rows, so a candidate cannot be promoted against an unprepared database even if
-schema approval was accidentally recorded too early.
+migrations did not finish successfully.
 
 ## Client releases
 
@@ -102,5 +101,6 @@ node --test tests/*.test.cjs
 HTTP tests use an isolated transactional database stub and cover authorization,
 driver isolation, validation, idempotence, cancellation, completion, stale
 revisions, rollback, and the missing-migration response. They do not execute DDL
-against a live MySQL server. Test the migration and query plans on a matching
-staging database before production rollout.
+against a live MySQL server. CI additionally runs the migration integration suite
+against MariaDB 10.11, covering fresh and legacy schemas, seed preservation,
+repeat deployment, checksum drift and partial DDL failure.

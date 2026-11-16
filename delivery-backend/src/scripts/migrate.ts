@@ -1,24 +1,20 @@
-import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import mysql from 'mysql2/promise';
-import type { RowDataPacket } from 'mysql2';
 import { env } from '../config/env.js';
+import { loadMigrations, migrate } from '../db/migrations.js';
 
 const migrationsDirectory = resolve(process.cwd(), 'migrations');
 
 const run = async () => {
-  const available = (await readdir(migrationsDirectory))
-    .filter((file) => /^\d+_.+\.sql$/.test(file))
-    .sort((left, right) => left.localeCompare(right));
-  const requested = process.argv.slice(2);
-  if (requested.length > 1 || (requested[0] && !available.includes(requested[0]))) {
-    throw new Error('Pass one exact migration filename from the migrations directory, or omit it to run all files.');
-  }
-  const files = requested[0] ? [requested[0]] : available;
-
-  if (!files.length) {
-    console.log('No migration files found.');
-    return;
+  const files = await loadMigrations(migrationsDirectory);
+  const args = process.argv.slice(2);
+  const planOnly = args[0] === '--plan';
+  const retry = args[0] === '--retry' ? args[1] : undefined;
+  const targeted = args.length === 1 && !args[0].startsWith('--') ? args[0] : undefined;
+  if (args.length && !((planOnly && args.length === 1)
+      || (retry && args.length === 2 && files.some(file => file.filename === retry))
+      || (targeted && files.some(file => file.filename === targeted)))) {
+    throw new Error('Pass one exact migration filename, --plan, --retry <filename>, or omit arguments to run pending files.');
   }
 
   const connection = await mysql.createConnection({
@@ -28,25 +24,13 @@ const run = async () => {
     password: env.dbPassword,
     database: env.dbName,
     multipleStatements: true,
+    connectTimeout: 10000,
   });
 
   try {
-    for (const file of files) {
-      const sql = await readFile(resolve(migrationsDirectory, file), 'utf8');
-      await connection.beginTransaction();
-      try {
-        await connection.query(sql);
-        await connection.commit();
-        console.log(`Applied ${file}`);
-      } catch (error) {
-        await connection.rollback();
-        throw error;
-      }
-    }
-    const [rows] = await connection.query<(RowDataPacket & { count: number })[]>(
-      'SELECT COUNT(*) AS count FROM saved_places',
-    );
-    console.log(`Saved places ready: ${Number(rows[0]?.count ?? 0)}`);
+    const plan = await migrate(connection, files, { planOnly, retry, only: targeted,
+      log: planOnly ? undefined : console.log });
+    if (planOnly) console.log(JSON.stringify(plan));
   } finally {
     await connection.end();
   }

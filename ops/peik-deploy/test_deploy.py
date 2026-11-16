@@ -71,27 +71,42 @@ class MigrationReviewSecurity(unittest.TestCase):
             (required / '002_required.sql').write_text('ALTER TABLE existing_table ADD name VARCHAR(100);')
             self.assertNotEqual(deploy.migration_digest(backend), baseline)
 
-    def test_changed_required_migration_still_stops_before_candidate_or_activation(self):
+    def test_changed_required_migrations_run_before_candidate_and_activation(self):
         sha = 'b' * 40
         with tempfile.TemporaryDirectory() as directory:
             release = Path(directory)
             migrations = release / 'backend/migrations'
             migrations.mkdir(parents=True)
             (migrations / '002_required.sql').write_text('ALTER TABLE locations ADD example INT;')
-            state = {'migration_digest': 'previous-schema-fingerprint'}
+            state = {'migration_digest': 'previous-schema-fingerprint', 'current_release': 'a' * 40}
+            order = []
             with patch.object(deploy, 'read_state', return_value=state), \
                  patch.object(deploy, 'remote_sha', return_value=sha), \
                  patch.object(deploy, 'atomic_json'), \
                  patch.object(deploy, 'receive_artifact', return_value=release), \
-                 patch.object(deploy, 'candidate_check') as candidate, \
-                 patch.object(deploy, 'activate') as activate, \
+                 patch.object(deploy, 'migrate_release', side_effect=lambda path: order.append('migrate')), \
+                 patch.object(deploy, 'candidate_check', side_effect=lambda path: order.append('candidate')), \
+                 patch.object(deploy, 'activate', side_effect=lambda path, state: order.append('activate')), \
                  patch.object(deploy, 'log'):
-                with self.assertRaisesRegex(RuntimeError, 'manual database review required'):
-                    deploy.receive(sha)
-                candidate.assert_not_called()
-                activate.assert_not_called()
+                deploy.receive(sha)
+                self.assertEqual(order, ['migrate', 'candidate', 'activate'])
 
 class TransactionSecurity(unittest.TestCase):
+    def test_migration_failure_never_starts_candidate_or_promotes(self):
+        sha = 'b' * 40
+        state = {'current_release': 'a' * 40, 'migration_digest': 'old'}
+        with patch.object(deploy, 'read_state', return_value=state.copy()), \
+             patch.object(deploy, 'remote_sha', return_value=sha), \
+             patch.object(deploy, 'atomic_json'), patch.object(deploy, 'log'), \
+             patch.object(deploy, 'receive_artifact', return_value=Path('/unused') / sha), \
+             patch.object(deploy, 'migrate_release', side_effect=RuntimeError('Migration failed')), \
+             patch.object(deploy, 'candidate_check') as candidate, \
+             patch.object(deploy, 'activate') as activate:
+            with self.assertRaisesRegex(RuntimeError, 'Migration failed'):
+                deploy.receive(sha)
+            candidate.assert_not_called()
+            activate.assert_not_called()
+
     def test_disconnected_ssh_cannot_break_coordinator_logging(self):
         with patch('builtins.print', side_effect=BrokenPipeError), \
              patch.object(deploy, 'silence_stdout') as silence:

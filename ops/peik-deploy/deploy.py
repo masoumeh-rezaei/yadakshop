@@ -223,7 +223,8 @@ def candidate_check(path):
         '--property=ProtectSystem=strict', '--property=ProtectHome=true',
         '--property=MemoryMax=512M', '--property=TasksMax=128', '--property=RuntimeMaxSec=180',
         '/usr/bin/env', '-i', 'PATH=/opt/peik-deploy/node/bin:/usr/bin:/bin', 'PORT=3001',
-        'NODE_ENV=production', 'DOTENV_CONFIG_PATH=/opt/peik-deploy/shared/backend.env',
+        'NODE_ENV=production', 'PEIK_DISABLE_BACKGROUND_WORKERS=1',
+        'DOTENV_CONFIG_PATH=/opt/peik-deploy/shared/backend.env',
         str(NODE), '--require=' + str(HELPERS / 'candidate.cjs'), 'dist/server.js']
     try:
         run(command)
@@ -245,6 +246,10 @@ def restore(transaction):
         log('ROLLBACK_OK ' + old.name)
     finally:
         for sig, handler in handlers.items(): signal.signal(sig, handler)
+
+def migrate_release(path):
+    log('MIGRATIONS_START ' + path.name)
+    run(['/usr/bin/python3', HELPERS / 'migrations.py', path / 'backend'], timeout=420)
 
 def interrupted(sig, frame):
     raise DeploymentInterrupted('Deployment interrupted by signal ' + str(sig))
@@ -283,9 +288,7 @@ def receive(sha):
             raise RuntimeError('Commit held after manual rollback; root must resume this exact SHA')
         atomic_json(STATE, state)
         path = receive_artifact(sha)
-        changed = migration_digest(path / 'backend') != state['migration_digest']
-        if changed and state.get('approved_schema_sha') != sha:
-            raise RuntimeError('Migration files changed: manual database review required before approve-schema')
+        migrate_release(path)
         candidate_check(path)
         # Never publish an obsolete build when main changes while it is being built.
         if remote_sha() != sha:
