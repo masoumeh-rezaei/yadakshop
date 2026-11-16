@@ -19,6 +19,18 @@ jobs:
     name: Build and verify
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:10.11@sha256:7d829180b5b2a9ba74f6242876ab401a0d7dd338a807e522ef92bc9698760f20
+        env:
+          MARIADB_ROOT_PASSWORD: peik-ci-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      MIGRATION_TEST_DB_HOST: 127.0.0.1
+      MIGRATION_TEST_DB_PASSWORD: peik-ci-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

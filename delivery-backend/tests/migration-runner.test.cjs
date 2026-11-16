@@ -15,7 +15,13 @@ function runMigration(filename) {
     const calls = [];
     require(${JSON.stringify(require.resolve('mysql2/promise'))}).createConnection = async () => ({
       beginTransaction: async () => {}, commit: async () => {}, rollback: async () => {},
-      query: async sql => { calls.push(sql); fs.writeFileSync(${JSON.stringify(output)}, JSON.stringify(calls)); return [[{ count: 0 }]]; },
+      query: async query => {
+        const sql = typeof query === 'string' ? query : query.sql;
+        calls.push(sql); fs.writeFileSync(${JSON.stringify(output)}, JSON.stringify(calls));
+        if (sql.includes('GET_LOCK')) return [[{ acquired: 1 }]];
+        if (sql.includes('DATABASE() AS name')) return [[{ name: 'test' }]];
+        return [[]];
+      },
       end: async () => {},
     });
   `);
@@ -52,7 +58,7 @@ test('task description migration runs independently without recreating tasks or 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Applied 003_add_task_description.sql/);
   assert.ok(result.queries.some(sql => sql.includes('ADD COLUMN description TEXT NULL')));
-  assert.ok(result.queries.every(sql => !/INSERT INTO|CREATE TABLE|DELETE FROM/.test(sql)));
+  assert.ok(result.queries.filter(sql => !sql.includes('peik_schema_migrations')).every(sql => !/INSERT INTO|CREATE TABLE|DELETE FROM/.test(sql)));
 });
 
 test('push migration targets device/outbox tables without replaying place or task data', () => {

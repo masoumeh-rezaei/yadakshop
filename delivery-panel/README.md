@@ -19,7 +19,7 @@ Set `VITE_API_URL` in `.env.local` to the backend URL.
 - Preflight is intentionally omitted to preserve the existing browser defaults and map appearance. Responsive layouts retain the original inclusive 980px and 640px boundaries.
 - Semantic class names such as `selected`, `active`, and `modal` serve as scoped selector hooks; their styling is defined by Tailwind utilities.
 
-Deployment and manual schema approval are documented in [`ops/peik-deploy/README.md`](../ops/peik-deploy/README.md).
+Deployment and automatic backed-up migrations are documented in [`ops/peik-deploy/README.md`](../ops/peik-deploy/README.md).
 
 ## Courier route history
 
