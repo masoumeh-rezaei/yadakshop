@@ -6,6 +6,7 @@ import { formatTaskTimestamp, taskElapsed } from '@/utils/task-time';
 import { deleteSavedDestination, openDestination, savedDestinations, saveDestination, shareDestination, type SavedDestination } from '@/services/destinations';
 import { CompleteTaskDialog } from './CompleteTaskDialog';
 import { DriverTaskMap } from './DriverTaskMap';
+import { TaskNotificationMenu } from './TaskNotificationMenu';
 
 interface Props {
   token: string; userId: number;
@@ -93,22 +94,9 @@ export function DriverTasks({ token, userId, currentLocation, onLocateMe, locati
       <TouchableOpacity accessibilityLabel="بستن اعلان وظیفه" onPress={() => setDismissedAnnouncement(announcementKey)}><Text style={styles.dismiss}>×</Text></TouchableOpacity>
       <TouchableOpacity style={styles.announcementText} accessibilityRole="button" onPress={() => selectTask(state.announcement!.id, true)}><Text style={styles.announcementTitle}>وظیفهٔ جدید دریافت شد</Text><Text style={styles.announcementBody}>{state.announcement.placeName}</Text></TouchableOpacity>
     </View>}
-    {(state.pushStatus !== 'unsupported' || state.registeringPush) && <View style={styles.notificationCard}>
-      <Text style={styles.notificationTitle}>اعلان گوشی</Text>
-      <Text style={styles.notificationText} accessibilityLiveRegion="polite">{state.pushMessage}</Text>
-      <View style={styles.notificationRow}>
-        <TouchableOpacity accessibilityRole="button" disabled={state.testingPush} onPress={() => { void state.enableNotifications(); }} style={styles.notificationButton}>
-          {state.registeringPush && <ActivityIndicator size="small" color="#0f9475" />}<Text style={styles.notificationAction}>{state.registeringPush ? 'بررسی مجدد' : state.pushStatus === 'ready' ? 'بررسی اتصال اعلان' : 'فعال‌سازی اعلان‌ها'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity accessibilityRole="button" onPress={() => { void state.openTaskNotificationSettings().catch(() => {}); }} style={styles.notificationButton}><Text style={styles.notificationAction}>تنظیمات گوشی</Text></TouchableOpacity>
-      </View>
-      <View style={styles.notificationRow}>
-        <TouchableOpacity accessibilityRole="button" disabled={state.testingPush || state.registeringPush} onPress={() => { void state.testNotifications(false); }} style={styles.notificationButton}><Text style={styles.notificationAction}>آزمایش نوار اعلان</Text></TouchableOpacity>
-        <TouchableOpacity accessibilityRole="button" disabled={state.testingPush || state.registeringPush || state.pushStatus !== 'ready'} onPress={() => { void state.testNotifications(true); }} style={[styles.notificationButton, state.pushStatus !== 'ready' && styles.disabled]}><Text style={styles.notificationAction}>آزمایش از سرور</Text></TouchableOpacity>
-      </View>
-      {state.pushTestMessage ? <Text accessibilityLiveRegion="polite" style={[styles.notificationText, state.pushTestError && styles.notificationError]}>{state.pushTestMessage}</Text> : null}
-      <Text style={styles.notificationHint}>برای دریافت در صفحهٔ قفل، اجازهٔ اعلان و دستهٔ «وظایف جدید» روشن باشد. اپ را از تنظیمات گوشی Force stop نکنید.</Text>
-    </View>}
+    <TaskNotificationMenu status={state.pushStatus} checking={state.registeringPush} testing={state.testingPush}
+      message={state.pushMessage} testMessage={state.pushTestMessage} testError={state.pushTestError}
+      onSettings={state.openTaskNotificationSettings} onTest={() => state.testNotifications(false)} />
 
     <DriverTaskMap payload={payload} onSelectTask={selectTask} onDestinationAction={(id, action) => {
       const task = pendingTasks.find(item => item.id === id);
@@ -179,13 +167,6 @@ const styles = StyleSheet.create({
   announcement: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 13, backgroundColor: '#e2f6ed', marginBottom: 13, borderWidth: 1, borderColor: '#a9dec6' },
   dismiss: { fontSize: 24, color: '#6b9b83' }, announcementText: { flex: 1 },
   announcementTitle: { textAlign: 'right', color: '#167b58', fontWeight: '700', fontSize: 12 }, announcementBody: { textAlign: 'right', color: '#496e60', fontSize: 13, marginTop: 5 },
-  notificationCard: { padding: 13, gap: 9, borderRadius: 13, borderWidth: 1, borderColor: '#cfe5da', backgroundColor: '#f3faf6', marginBottom: 14 },
-  notificationTitle: { color: '#0f766e', fontSize: 13, fontWeight: '700', textAlign: 'right' },
-  notificationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
-  notificationButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 9, borderWidth: 1, borderColor: '#cfe5da', backgroundColor: '#fff' },
-  notificationHint: { color: '#879b91', fontSize: 10, lineHeight: 19, textAlign: 'right' },
-  notificationError: { color: '#b91c1c' },
-  notificationAction: { color: '#0f9475', fontSize: 11, fontWeight: '700' }, notificationText: { color: '#84958f', fontSize: 10, textAlign: 'right', flexShrink: 1, lineHeight: 19 },
   mapControls: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 11 }, mapButton: { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 9, backgroundColor: '#e8eef9', minHeight: 36, justifyContent: 'center' },
   mapButtonText: { color: '#42618c', fontSize: 11, fontWeight: '600' },
   mapHint: { color: '#94a3b8', fontSize: 10, textAlign: 'right', marginTop: 10, marginBottom: 16, lineHeight: 19 },

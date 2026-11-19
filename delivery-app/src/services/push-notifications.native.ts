@@ -32,7 +32,7 @@ export async function registerTaskNotifications(token: string, requestPermission
       return { status: 'permission', stage: 'permission', message: 'در تنظیمات گوشی، اجازهٔ اعلان اپ را روشن کنید؛ بعد به برنامه برگردید.' };
     }
     if (!allowed() && requestPermission) permission = await run(() => Notifications.requestPermissionsAsync(), 'permission', 60_000);
-    if (!allowed()) return { status: 'permission', stage: 'permission', message: 'اجازهٔ اعلان گوشی داده نشده است؛ فعال‌سازی اعلان‌ها را بزنید.' };
+    if (!allowed()) return { status: 'permission', stage: 'permission', message: 'اجازهٔ اعلان داده نشده است؛ از «تنظیمات گوشی» آن را روشن کنید.' };
     if (Platform.OS === 'android') {
       const channel = await run(() => Notifications.getNotificationChannelAsync('tasks'), 'channel');
       if (!channel || channel.importance === Notifications.AndroidImportance.NONE) {
@@ -55,7 +55,7 @@ export async function registerTaskNotifications(token: string, requestPermission
     if (generation !== registrationGeneration) { await removePushDevice(token, pushToken); throw Object.assign(new Error('Cancelled'), { name: 'AbortError' }); }
     registeredToken = pushToken;
     await tokenStorage.setPushToken(pushToken);
-    return { status: 'ready', stage: 'server', message: 'این گوشی برای اعلان وظایف روی سرور ثبت شد. دریافت واقعی را با «آزمایش از سرور» بررسی کنید.' };
+    return { status: 'ready', stage: 'server', message: 'این گوشی برای دریافت اعلان وظایف روی سرور ثبت شد.' };
   } catch (cause) {
     if ((cause as Error)?.name === 'AbortError') throw cause;
     return pushFailure(cause, stage);
