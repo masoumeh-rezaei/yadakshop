@@ -62,6 +62,16 @@ uses Expo's HTTPS API, optional server-only `EXPO_ACCESS_TOKEN`, high-priority
 `tasks` channel, and per-task notification tags to replace duplicates. Push
 provider acceptance is not a guarantee that a device displayed the notification.
 
+Device registration also idempotently queues the courier's current pending
+assignments, recovering tasks created before that phone registered. Current
+ownership, active status and task revision are still checked before sending.
+`POST /api/notifications/test` is an authenticated DRIVER self-test that only
+accepts a token registered to that active account. It is limited to one attempt
+per account per 30 seconds, has a bounded limiter, sends no task identifiers,
+and reports acceptance without claiming on-device delivery. Credential/network
+errors are returned as safe actionable messages; tokens/provider payloads are
+never echoed. No extra database migration is required for these improvements.
+
 The runner validates the exact filename before opening a database connection.
 Alternatively import only that SQL file into the selected database using
 phpMyAdmin. The table creation is idempotent. MySQL DDL can commit implicitly;

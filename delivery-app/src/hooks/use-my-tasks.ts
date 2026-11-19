@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { io } from 'socket.io-client';
 import { API_URL, ApiError, completeMyTask, getMyTasks } from '@/services/api';
-import { registerTaskNotifications, subscribeTaskNotifications, type PushStatus } from '@/services/push-notifications';
+import { registerTaskNotifications, subscribeTaskNotifications, testLocalTaskNotification, testRemoteTaskNotification, openTaskNotificationSettings, type PushStatus } from '@/services/push-notifications';
 import type { DriverTask } from '@/types/task';
 
 export function useMyTasks(token: string, userId: number, onUnauthorized: () => void) {
@@ -17,7 +17,14 @@ export function useMyTasks(token: string, userId: number, onUnauthorized: () => 
   const [notificationSelection, setNotificationSelection] = useState<{ id: number; nonce: number } | null>(null);
   const [pushStatus, setPushStatus] = useState<PushStatus>('unsupported');
   const [registeringPush, setRegisteringPush] = useState(false);
-  const registration = useRef(false);
+  const [pushMessage, setPushMessage] = useState('در حال بررسی تنظیمات اعلان گوشی…');
+  const [testingPush, setTestingPush] = useState(false);
+  const [pushTestMessage, setPushTestMessage] = useState('');
+  const [pushTestError, setPushTestError] = useState(false);
+  const registration = useRef<{ controller: AbortController; interactive: boolean } | null>(null);
+  const registrationAt = useRef(0);
+  const pushReady = useRef(false);
+  const testing = useRef(false);
   const pendingRef = useRef(new Set<number>());
   const mutations = useRef(new Set<AbortController>());
   const request = useRef<AbortController | null>(null);
@@ -66,20 +73,47 @@ export function useMyTasks(token: string, userId: number, onUnauthorized: () => 
   refreshRef.current = refresh;
 
   const enableNotifications = useCallback(async (requestPermission = true) => {
-    if (registration.current) return;
-    registration.current = true;
-    setRegisteringPush(true);
-    try {
-      const status = await registerTaskNotifications(token, requestPermission);
-      if (alive.current) setPushStatus(status);
-    } finally {
-      registration.current = false;
-      if (alive.current) setRegisteringPush(false);
+    if (registration.current) {
+      if (!requestPermission || registration.current.interactive) return;
+      registration.current.controller.abort();
     }
+    const controller = new AbortController();
+    registration.current = { controller, interactive: requestPermission };
+    registrationAt.current = Date.now();
+    setRegisteringPush(true);
+    setPushMessage('در حال بررسی اجازهٔ اعلان و اتصال گوشی به سرور…');
+    try {
+      const result = await registerTaskNotifications(token, requestPermission, controller.signal);
+      if (alive.current && registration.current?.controller === controller) {
+        setPushStatus(result.status); setPushMessage(result.message); pushReady.current = result.status === 'ready';
+      }
+    } catch {
+      if (alive.current && !controller.signal.aborted) {
+        setPushStatus('error'); setPushMessage('فعال‌سازی اعلان کامل نشد؛ دوباره تلاش کنید.'); pushReady.current = false;
+      }
+    } finally {
+      if (registration.current?.controller === controller) {
+        registration.current = null;
+        if (alive.current) setRegisteringPush(false);
+      }
+    }
+  }, [token]);
+
+  const testNotifications = useCallback(async (remote: boolean) => {
+    if (testing.current) return;
+    testing.current = true; setTestingPush(true); setPushTestError(false);
+    setPushTestMessage(remote ? 'در حال ارسال پیام آزمایشی از سرور…' : 'در حال ساخت اعلان آزمایشی روی گوشی…');
+    try {
+      const result = remote ? await testRemoteTaskNotification(token) : await testLocalTaskNotification();
+      if (alive.current) { setPushTestMessage(result.message); setPushTestError(result.status !== 'ready'); }
+    } catch {
+      if (alive.current) { setPushTestMessage('آزمایش اعلان کامل نشد؛ دوباره تلاش کنید.'); setPushTestError(true); }
+    } finally { testing.current = false; if (alive.current) setTestingPush(false); }
   }, [token]);
 
   useEffect(() => {
     alive.current = true;
+    pushReady.current = false;
     known.current = null;
     const socket = io(API_URL, { auth: { token }, autoConnect: false,
       transports: ['websocket', 'polling'], reconnectionDelay: 1000, reconnectionDelayMax: 10_000 });
@@ -95,6 +129,7 @@ export function useMyTasks(token: string, userId: number, onUnauthorized: () => 
     foreground();
     const timer = setInterval(() => {
       if (AppState.currentState === 'active' && (!socket.connected || Date.now() - refreshedAt.current >= 60_000)) void refresh();
+      if (AppState.currentState === 'active' && !pushReady.current && Date.now() - registrationAt.current >= 60_000) void enableNotifications(false);
     }, 5000);
     const subscription = AppState.addEventListener('change', foreground);
     const unsubscribePush = subscribeTaskNotifications(() => { void refresh(); }, id => {
@@ -102,6 +137,7 @@ export function useMyTasks(token: string, userId: number, onUnauthorized: () => 
     }, () => { void enableNotifications(false); });
     return () => {
       alive.current = false;
+      registration.current?.controller.abort(); registration.current = null;
       queued.current = false;
       request.current?.abort(); request.current = null;
       for (const controller of mutations.current) controller.abort();
@@ -141,5 +177,6 @@ export function useMyTasks(token: string, userId: number, onUnauthorized: () => 
   }, [token, userId, reportError]);
 
   return { tasks, loading, refreshing, lastUpdated, realtime, error, pending, refresh, complete,
-    announcement, notificationSelection, pushStatus, registeringPush, enableNotifications };
+    announcement, notificationSelection, pushStatus, pushMessage, registeringPush, enableNotifications,
+    testingPush, pushTestMessage, pushTestError, testNotifications, openTaskNotificationSettings };
 }

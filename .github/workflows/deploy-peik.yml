@@ -43,6 +43,12 @@ jobs:
         run: python3 -m unittest discover -s ops/peik-deploy -p 'test_*.py' -v
       - name: Verify backend release selection
         run: node --test .github/scripts/*.test.mjs
+      - name: Verify mobile notification registration and types
+        working-directory: delivery-app
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx tsc --noEmit
+          node --test tests/*.test.cjs
       - name: Build backend and panel from lockfiles
         run: bash .github/scripts/build-peik.sh
       - name: Store release artifact
