@@ -33,6 +33,16 @@ pool.execute = async (statement, params) => {
   if (query.startsWith('INSERT INTO push_devices')) {
     devices.set(params[1], { userId: params[0], platform: params[2] }); return [{ affectedRows: 1 }];
   }
+  if (query.startsWith('INSERT IGNORE INTO task_push_jobs')) {
+    assert.match(query, /t.status = 'pending'/);
+    assert.match(query, /d.user_id = \? AND d.expo_token = \?/);
+    const device = devices.get(params[1]);
+    assert.equal(device?.userId, params[0]);
+    return [{ affectedRows: 0 }];
+  }
+  if (query.startsWith('SELECT d.id FROM push_devices')) {
+    return [[devices.get(params[1])?.userId === params[0] ? { id: 1 } : null].filter(Boolean)];
+  }
   if (query.startsWith('DELETE FROM push_devices')) {
     if (devices.get(params[1])?.userId === params[0]) {
       devices.delete(params[1]);
@@ -75,6 +85,52 @@ async function request(userId, method, body) {
   return fetch(base + '/device', { method, headers: { 'Content-Type': 'application/json',
     ...(userId === null ? {} : { Authorization: `Bearer ${jwt.sign({ sub: userId }, process.env.JWT_SECRET)}` }) }, body: JSON.stringify(body) });
 }
+async function testRequest(userId, token = pushToken) {
+  return fetch(base + '/test', { method: 'POST', headers: { 'Content-Type': 'application/json',
+    ...(userId === null ? {} : { Authorization: `Bearer ${jwt.sign({ sub: userId }, process.env.JWT_SECRET)}` }) }, body: JSON.stringify({ expoPushToken: token, userId: 99 }) });
+}
+
+test('push self-tests require an active authenticated courier and their own registered device', async () => {
+  devices.set(pushToken, { userId: 10, platform: 'android' });
+  assert.equal((await testRequest(null)).status, 401);
+  assert.equal((await testRequest(1)).status, 403);
+  assert.equal((await testRequest(4)).status, 401);
+  assert.equal((await testRequest(10, 'bad-token')).status, 400);
+  assert.equal((await testRequest(11)).status, 409);
+  assert.equal(requests.length, 0);
+  const accepted = await testRequest(10);
+  assert.equal(accepted.status, 200);
+  assert.deepEqual((await accepted.json()).data, { accepted: true, receiptPending: true });
+  assert.equal(requests[0].body[0].channelId, 'tasks');
+  assert.equal(requests[0].body[0].data.type, 'push.remote-test');
+  assert.equal(requests[0].body[0].priority, 'high');
+  assert.equal((await testRequest(10)).status, 429);
+  assert.equal(requests.length, 1);
+});
+
+test('push self-tests report provider credential/network errors without exposing tokens or upstream payloads', async () => {
+  devices.set(pushToken, { userId: 12, platform: 'android' });
+  fakeResponse = async () => Response.json({ data: [{ status: 'error', details: { error: 'InvalidCredentials' }, message: pushToken }] });
+  const badCredentials = await testRequest(12);
+  assert.equal(badCredentials.status, 502);
+  const details = await badCredentials.text();
+  assert.match(details, /FCM/); assert.ok(!details.includes(pushToken));
+  devices.set(pushToken, { userId: 13, platform: 'android' });
+  fakeResponse = async () => { throw new Error('Network failed with secret details'); };
+  const network = await testRequest(13);
+  assert.equal(network.status, 502);
+  assert.ok(!(await network.text()).includes('secret'));
+});
+
+test('self-tests invalidate expired devices and do not claim missing tickets as delivery', async () => {
+  devices.set(pushToken, { userId: 14, platform: 'android' });
+  fakeResponse = async () => Response.json({ data: [{ status: 'error', details: { error: 'DeviceNotRegistered' } }] });
+  assert.equal((await testRequest(14)).status, 409);
+  assert.equal(devices.has(pushToken), false);
+  devices.set(pushToken, { userId: 15, platform: 'android' });
+  fakeResponse = async () => Response.json({ data: [{ status: 'ok' }] });
+  assert.equal((await testRequest(15)).status, 502);
+});
 
 test('device registration uses authenticated driver identity and validates tokens/platforms', async () => {
   const body = { expoPushToken: pushToken, platform: 'android', userId: 3 };

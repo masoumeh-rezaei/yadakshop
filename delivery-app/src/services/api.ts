@@ -19,11 +19,15 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 const fetchWithTimeout = async (input: string, init?: RequestInit) => {
   const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  init?.signal?.addEventListener('abort', onAbort, { once: true });
+  if (init?.signal?.aborted) controller.abort();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
+    init?.signal?.removeEventListener('abort', onAbort);
   }
 };
 
@@ -87,10 +91,17 @@ export const completeMyTask = async (token: string, task: DriverTask, signal?: A
   return (await parseResponse<{ success: true; data: DriverTask }>(response)).data;
 };
 
-export const registerPushDevice = async (token: string, expoPushToken: string, platform: 'android' | 'ios') => {
+export const registerPushDevice = async (token: string, expoPushToken: string, platform: 'android' | 'ios', signal?: AbortSignal) => {
   const response = await fetchWithTimeout(`${API_URL}/api/notifications/device`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ expoPushToken, platform }),
+    body: JSON.stringify({ expoPushToken, platform }), signal,
+  });
+  await parseResponse(response);
+};
+export const testPushDevice = async (token: string, expoPushToken: string) => {
+  const response = await fetchWithTimeout(`${API_URL}/api/notifications/test`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expoPushToken }),
   });
   await parseResponse(response);
 };

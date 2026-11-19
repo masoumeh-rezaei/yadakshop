@@ -9,6 +9,11 @@ export async function registerPushDevice(userId: number, token: string, platform
   await pool.execute(`INSERT INTO push_devices (user_id, expo_token, platform) VALUES (?, ?, ?)
     ON DUPLICATE KEY UPDATE user_id = ?, platform = ?, updated_at = CURRENT_TIMESTAMP`,
   [userId, token, platform, userId, platform]);
+  // Recover assignments made before this phone could register. The delivery key
+  // makes resume/retry idempotent; the worker rechecks current ownership/revision.
+  await pool.execute(`INSERT IGNORE INTO task_push_jobs (task_id, task_revision, device_id)
+    SELECT t.id, t.revision, d.id FROM driver_tasks t INNER JOIN push_devices d ON d.user_id = t.driver_id
+    WHERE d.user_id = ? AND d.expo_token = ? AND t.status = 'pending'`, [userId, token]);
 }
 
 export async function unregisterPushDevice(userId: number, token: string) {
@@ -29,6 +34,41 @@ interface Delivery extends RowDataPacket {
   taskId: number; revision: number; expectedRevision: number; placeName: string; deviceId: number;
 }
 interface PushResult { status?: 'ok' | 'error'; id?: string; details?: { error?: string } }
+export class PushTestError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+const lastTest = new Map<number, number>();
+
+/** Authenticated self-test: never accepts another courier's registration or an arbitrary recipient. */
+export async function sendPushTest(userId: number, token: string) {
+  const [devices] = await pool.execute<RowDataPacket[]>(`SELECT d.id FROM push_devices d
+    INNER JOIN users u ON u.id = d.user_id WHERE d.user_id = ? AND d.expo_token = ? AND u.is_active = 1`, [userId, token]);
+  if (!devices.length) throw new PushTestError(409, 'این گوشی برای حساب شما ثبت نشده است؛ دوباره فعال‌سازی اعلان‌ها را بزنید.');
+  const now = Date.now();
+  for (const [id, time] of lastTest) if (now - time >= 30_000) lastTest.delete(id);
+  if (lastTest.has(userId) || lastTest.size >= 1000) throw new PushTestError(429, 'برای آزمایش دوباره، ۳۰ ثانیه صبر کنید.');
+  lastTest.set(userId, now);
+  let results: PushResult[];
+  try {
+    results = await expoRequest('send', [{ to: token, title: 'آزمایش اعلان از سرور',
+      body: 'اتصال ارسال اعلان بررسی شد؛ وظایف جدید هم باید در نوار اعلان گوشی نمایش داده شوند.',
+      sound: 'default', channelId: 'tasks', priority: 'high', ttl: 300,
+      data: { type: 'push.remote-test' },
+    }]) as PushResult[];
+  } catch {
+    throw new PushTestError(502, 'سرور به سرویس ارسال اعلان Expo دسترسی ندارد؛ مدیر سامانه باید اتصال سرور را بررسی کند.');
+  }
+  const result = Array.isArray(results) && results.length === 1 ? results[0] : undefined;
+  if (result?.status === 'ok' && typeof result.id === 'string') return { accepted: true, receiptPending: true };
+  const code = result?.details?.error;
+  if (code === 'DeviceNotRegistered') {
+    await unregisterPushDevice(userId, token);
+    throw new PushTestError(409, 'شناسهٔ اعلان گوشی منقضی شده؛ دوباره فعال‌سازی اعلان‌ها را بزنید.');
+  }
+  if (code === 'InvalidCredentials' || code === 'MismatchSenderId') throw new PushTestError(502,
+    'کلید Firebase/FCM این اپ در Expo معتبر نیست؛ تنظیمات ارسال اعلان باید روی سرور اصلاح شود.');
+  throw new PushTestError(502, 'سرویس اعلان پیام آزمایشی را نپذیرفت؛ مدیر سامانه باید وضعیت ارسال را بررسی کند.');
+}
 class PushTransportError extends Error {
   constructor(readonly retryable: boolean, readonly code: string) { super(code); }
 }
