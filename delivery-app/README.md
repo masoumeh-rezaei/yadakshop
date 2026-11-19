@@ -27,23 +27,26 @@ completion. No API token is included in external map links.
 
 ### Notifications while the app is closed
 
-The notification card reports each registration failure explicitly (OS/channel
+The compact notification menu is collapsed by default and shows the notification
+status in one row. It expands to exactly two actions: **تنظیمات گوشی** and
+**آزمایش نوار اعلان**. Registration stays automatic; diagnostic text appears
+inside the menu only when attention is needed or a test has been requested.
+Registration failures remain explicit (OS/channel
 permission, Google/FCM token acquisition, Expo connectivity, or API registration).
-Token requests time out instead of leaving activation pending indefinitely. A
-manual activation supersedes an automatic attempt, failed registration retries
-while foregrounded, and a saved Expo token can re-register without contacting
+Token requests time out instead of leaving activation pending indefinitely.
+Failed registrations retry while foregrounded, and a saved Expo token can re-register without contacting
 Expo again on every resume. Native token rotation invalidates that cache.
 
 **آزمایش نوار اعلان** schedules an OS notification locally; it does not test the
-backend. **آزمایش از سرور** sends through the authenticated API and Expo/FCM to
-this account's registered device. Provider acceptance is reported separately
-from actual on-phone receipt. The settings button opens Android's app
+backend. The server self-test remains available to internal diagnostics but is
+not shown in the compact menu. The settings button opens Android's app
 notification screen, including the **وظایف جدید** channel. A blocked channel is
 detected rather than reported as ready. The foreground handler enables banners,
 notification-list entries and sound; background/locked-screen delivery uses a
 remote notification payload, not JavaScript polling or a permanent socket.
 
-After installing the new APK, activate notifications, run both tests, then assign
+After installing the new APK, allow notifications through the settings action,
+run the notification-bar test, then assign
 a new pending task while the app is backgrounded, normally closed, and the
 screen locked. Confirm the destination in the system notification and open it
 to select the task. A powered-off/offline phone cannot display a notification
